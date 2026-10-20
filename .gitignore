@@ -1,0 +1,17 @@
+# Dependency directories
+node_modules/
+
+# Build output (none yet, placeholder for Phase 2+ tooling)
+dist/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/settings.json
+
+# Chrome extension packaging output
+*.crx
+*.pem

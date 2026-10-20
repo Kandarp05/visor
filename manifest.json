@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Visor — Phishing Detector",
+  "version": "0.1.0",
+  "description": "Passive phishing detection for AiTM, BiTB, Homograph, and Clickjacking attacks.",
+
+  "permissions": [
+    "webRequest",
+    "webNavigation",
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+
+  "host_permissions": ["<all_urls>"],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+
+  "action": {
+    "default_popup": "ui/popup.html",
+    "default_title": "Visor"
+  }
+}

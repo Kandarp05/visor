@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visor</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      width: 340px;
+      padding: 16px;
+      margin: 0;
+      background: #0f1117;
+      color: #e2e8f0;
+    }
+    h1 { font-size: 1rem; margin: 0 0 4px; color: #7dd3fc; }
+    .phase-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      background: #1e293b;
+      color: #94a3b8;
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin-bottom: 12px;
+    }
+    #status {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 10px;
+    }
+    .ok { color: #4ade80; }
+    .pending { color: #facc15; }
+  </style>
+</head>
+<body>
+  <h1>🛡 Visor</h1>
+  <span class="phase-badge">Phase 1 — Skeleton</span>
+  <div id="status">Loading…</div>
+  <script src="popup.js"></script>
+</body>
+</html>
