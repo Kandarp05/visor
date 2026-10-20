@@ -11,10 +11,17 @@
   // Inlined from lib/constants.js (content scripts cannot use ES imports)
   const VISOR_VERSION = '0.1.0';
 
-  console.log('[Visor content] loaded — v' + VISOR_VERSION, {
+  console.log('[Visor content] INJECTED document_start', {
     readyState: document.readyState,
     url: location.href,
   });
+
+  // T1.7 ping message
+  try {
+    chrome.runtime.sendMessage({ type: 'PHASE1_PING' }, () => {
+      if (chrome.runtime.lastError) {}
+    });
+  } catch (e) {}
 
   // ── Interstitial ────────────────────────────────────────────────────────
   // Called by tier2_dom.js via window.__visorShowInterstitial(verdict).

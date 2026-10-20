@@ -17,7 +17,7 @@ initTier1();
 // ── Tab cleanup ───────────────────────────────────────────────────────────
 chrome.tabs.onRemoved.addListener((tabId) => {
   deleteVector(tabId).catch(() => {});
-  console.log('[Visor] tab removed, vector deleted', { tabId });
+  console.log('[TAB] removed', { tabId });
 });
 
 // ── Message bus (content script → background) ─────────────────────────────
@@ -25,7 +25,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender.tab?.id;
 
   if (message.type === MSG.PHASE1_PING) {
-    console.log('[Visor] PHASE1_PING from', sender.tab?.url);
+    console.log('[MSG] received from content script', { type: message.type, url: sender.tab?.url });
     sendResponse({ ok: true });
     return false;
   }

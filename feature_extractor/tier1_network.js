@@ -106,11 +106,23 @@ async function lookupDomainAge(tabId, hostname) {
 
 function onBeforeNavigate(details) {
   if (details.frameId !== 0) return;
+  console.log('[NAV] onBeforeNavigate', { tabId: details.tabId, url: details.url });
   createVector(details.tabId, details.url).catch(() => {});
+}
+
+function onCommitted(details) {
+  if (details.frameId !== 0) return;
+  console.log('[NAV] onCommitted', { tabId: details.tabId, url: details.url });
+}
+
+function onCompleted(details) {
+  if (details.frameId !== 0) return;
+  console.log('[NAV] onCompleted', { tabId: details.tabId, url: details.url });
 }
 
 async function onBeforeRedirect(details) {
   if (details.type !== 'main_frame') return;
+  console.log('[NET] onBeforeRedirect', { tabId: details.tabId, url: details.url, redirectUrl: details.redirectUrl });
   const fromHost = (() => { try { return new URL(details.url).hostname; } catch { return ''; } })();
   const toHost   = (() => { try { return new URL(details.redirectUrl).hostname; } catch { return ''; } })();
   const crossOrigin = fromHost !== toHost ? 1 : 0;
@@ -151,6 +163,8 @@ function processResponseHeaders(details) {
 
 export function init() {
   chrome.webNavigation.onBeforeNavigate.addListener(onBeforeNavigate);
+  chrome.webNavigation.onCommitted.addListener(onCommitted);
+  chrome.webNavigation.onCompleted.addListener(onCompleted);
 
   chrome.webRequest.onBeforeRedirect.addListener(
     onBeforeRedirect,
