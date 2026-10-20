@@ -1,106 +1,103 @@
-// background.js — Phase 1 skeleton
-// Service worker: logs navigation/request/tab events to prove
-// permissions and injection timing are correct before any feature
-// extraction is wired in.
+// background.js — service worker
+// Single entry point. Registers Tier 1 listeners, owns the message bus,
+// and (Phase 5+) runs gating logic.
 //
-// PHASE 1 SELF-TEST: Open chrome://extensions → "Service Worker" →
-// Inspect → Console. Every event below should appear in real time.
-// Look for:
-//   [NAV] onBeforeNavigate   — fires the moment you hit Enter in the URL bar
-//   [NAV] onCommitted        — fires when the page starts loading
-//   [NET] onCompleted        — fires for each resource request
-//   [TAB] removed            — fires when you close a tab
-// If all four appear, Phase 1 is done.
+// All top-level listener registrations must be synchronous — MV3 requirement.
 
-import { VISOR_VERSION } from './lib/constants.js';
+import { VISOR_VERSION, MSG } from './lib/constants.js';
+import { init as initTier1 }  from './feature_extractor/tier1_network.js';
+import { getVector, deleteVector } from './feature_extractor/session_state.js';
 
-console.log(`[Visor background] service worker started — v${VISOR_VERSION}`);
+console.log(`[Visor] background service worker started — v${VISOR_VERSION}`);
 
-// ── Navigation events ──────────────────────────────────────────────────────
+// ── Tier 1: network feature extraction (registers its own listeners) ──────
+initTier1();
 
-chrome.webNavigation.onBeforeNavigate.addListener((details) => {
-  // Only care about top-level navigations (frameId 0) for now
-  if (details.frameId !== 0) return;
-  console.log('[NAV] onBeforeNavigate', {
-    tabId: details.tabId,
-    url: details.url,
-    navigationId: details.navigationId ?? '(unavailable in MV3)',
-    timeStamp: details.timeStamp,
-  });
+// ── Tab cleanup ───────────────────────────────────────────────────────────
+chrome.tabs.onRemoved.addListener((tabId) => {
+  deleteVector(tabId).catch(() => {});
+  console.log('[Visor] tab removed, vector deleted', { tabId });
 });
 
-chrome.webNavigation.onCommitted.addListener((details) => {
-  if (details.frameId !== 0) return;
-  console.log('[NAV] onCommitted', {
-    tabId: details.tabId,
-    url: details.url,
-    transitionType: details.transitionType,
-    transitionQualifiers: details.transitionQualifiers,
-  });
-});
-
-chrome.webNavigation.onDOMContentLoaded.addListener((details) => {
-  if (details.frameId !== 0) return;
-  console.log('[NAV] onDOMContentLoaded', {
-    tabId: details.tabId,
-    url: details.url,
-  });
-});
-
-chrome.webNavigation.onCompleted.addListener((details) => {
-  if (details.frameId !== 0) return;
-  console.log('[NAV] onCompleted (page fully loaded)', {
-    tabId: details.tabId,
-    url: details.url,
-  });
-});
-
-// ── Network events (observational only — no blocking) ──────────────────────
-
-chrome.webRequest.onCompleted.addListener(
-  (details) => {
-    // Only log main_frame and sub_frame requests to avoid noise
-    if (!['main_frame', 'sub_frame'].includes(details.type)) return;
-    console.log('[NET] onCompleted', {
-      tabId: details.tabId,
-      url: details.url,
-      statusCode: details.statusCode,
-      type: details.type,
-      responseHeaders: details.responseHeaders?.map((h) => h.name) ?? [],
-    });
-  },
-  { urls: ['<all_urls>'] },
-  ['responseHeaders', 'extraHeaders']
-);
-
-chrome.webRequest.onBeforeRedirect.addListener(
-  (details) => {
-    if (details.type !== 'main_frame') return;
-    console.log('[NET] onBeforeRedirect', {
-      tabId: details.tabId,
-      fromUrl: details.url,
-      toUrl: details.redirectUrl,
-      statusCode: details.statusCode,
-    });
-  },
-  { urls: ['<all_urls>'] }
-);
-
-// ── Tab lifecycle ──────────────────────────────────────────────────────────
-
-chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
-  console.log('[TAB] removed', { tabId, ...removeInfo });
-});
-
-// ── Message bus (Phase 2+ content script messages will land here) ──────────
-
+// ── Message bus (content script → background) ─────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[MSG] received from content script', {
-    type: message.type,
-    tabId: sender.tab?.id,
-    url: sender.tab?.url,
-    payload: message.payload,
-  });
-  sendResponse({ ok: true });
-  return true; // keep channel open for async responses later
+  const tabId = sender.tab?.id;
+
+  switch (message.type) {
+
+    // ── Phase 1 liveness ping ─────────────────────────────────────────────
+    case MSG.PHASE1_PING:
+      console.log('[Visor] PHASE1_PING from', sender.tab?.url);
+      sendResponse({ ok: true });
+      break;
+
+    // ── Phase 3: Tier 2 DOM features merged into session vector ───────────
+    case MSG.TIER2_FEATURES:
+      if (!tabId) { sendResponse({ ok: false }); break; }
+      import('./feature_extractor/session_state.js').then(({ updateVector }) =>
+        updateVector(tabId, message.payload)
+      ).then(() => sendResponse({ ok: true }))
+       .catch(() => sendResponse({ ok: false }));
+      return true; // async
+
+    // ── Phase 5: Form submit — classify and respond ────────────────────────
+    case MSG.FORM_SUBMIT:
+      if (!tabId) { sendResponse({ verdict: 'safe', score: 0, module: 'none' }); break; }
+      handleFormSubmit(tabId, sendResponse);
+      return true; // async
+
+    // ── Phase 5: BiTB — window.open intercepted ───────────────────────────
+    case MSG.BITB_WINDOW_OPEN:
+      if (!tabId) { sendResponse({ block: false }); break; }
+      handleBitbOpen(tabId, sendResponse);
+      return true; // async
+
+    // ── Phase 5: Clickjacking — suspicious iframe detected ────────────────
+    case MSG.IFRAME_SUSPICIOUS:
+      if (!tabId) { sendResponse({ block: false }); break; }
+      handleIframeSuspicious(tabId, sendResponse);
+      return true; // async
+
+    default:
+      sendResponse({ ok: false, error: `Unknown message type: ${message.type}` });
+  }
 });
+
+// ── Phase 5 gating handlers (stubs until models/interface.js exists) ──────
+// These are defined here so the message switch above compiles cleanly.
+// They import the model interface lazily so Phase 2–4 work without models/.
+
+async function handleFormSubmit(tabId, sendResponse) {
+  try {
+    const vector  = await getVector(tabId);
+    const { classifyAll } = await import('./models/interface.js');
+    const results = classifyAll(vector);
+    const hit     = results.find((r) => r.verdict === 'suspicious');
+    sendResponse(hit ?? { verdict: 'safe', score: 0, module: 'none' });
+  } catch (e) {
+    console.warn('[Visor] classify error (models not yet built?):', e.message);
+    sendResponse({ verdict: 'safe', score: 0, module: 'none' });
+  }
+}
+
+async function handleBitbOpen(tabId, sendResponse) {
+  try {
+    const vector = await getVector(tabId);
+    const { classifyBitb } = await import('./models/interface.js');
+    const result = classifyBitb(vector);
+    sendResponse({ block: result.verdict === 'suspicious', ...result });
+  } catch {
+    sendResponse({ block: false });
+  }
+}
+
+async function handleIframeSuspicious(tabId, sendResponse) {
+  try {
+    const vector = await getVector(tabId);
+    const { classifyClickjacking } = await import('./models/interface.js');
+    const result = classifyClickjacking(vector);
+    sendResponse({ block: result.verdict === 'suspicious', ...result });
+  } catch {
+    sendResponse({ block: false });
+  }
+}
