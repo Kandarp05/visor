@@ -87,24 +87,40 @@
     }
 
     // ── document_start: window.open wrap (BiTB) ───────────────────────────
+    function handleBitbAttempt(targetUrl) {
+      console.log('[Visor Tier2] window.open intercepted', { url: targetUrl });
+      chrome.runtime.sendMessage(
+        { type: 'BITB_WINDOW_OPEN', payload: { url: targetUrl } },
+        (response) => {
+          if (chrome.runtime.lastError) return;
+          if (response?.block) {
+            document.documentElement.setAttribute('data-visor-bitb-block', 'true');
+            console.warn('[Visor Tier2] window.open BLOCKED (BiTB suspicious)');
+            if (typeof window.__visorShowInterstitial === 'function') {
+              window.__visorShowInterstitial({
+                module: 'bitb',
+                score: response.score || 0.8,
+                verdict: 'suspicious',
+              });
+            }
+          }
+        }
+      );
+    }
+
+    window.addEventListener('__visor_bitb_attempt', (e) => {
+      handleBitbAttempt(e.detail?.url ?? '');
+    });
+
     try {
       const _originalOpen = window.open.bind(window);
       window.open = function visorOpenWrap(...args) {
-        const targetUrl = args[0] ?? '';
-        console.log('[Visor Tier2] window.open intercepted', { url: targetUrl });
-
-        chrome.runtime.sendMessage(
-          { type: 'BITB_WINDOW_OPEN', payload: { url: targetUrl } },
-          (response) => {
-            if (chrome.runtime.lastError) return;
-            if (response?.block) {
-              console.warn('[Visor Tier2] window.open BLOCKED (BiTB suspicious)');
-            } else {
-              _originalOpen(...args);
-            }
-          }
-        );
-        return null;
+        handleBitbAttempt(args[0] ?? '');
+        if (document.documentElement.getAttribute('data-visor-bitb-block') === 'true') {
+          console.warn('[Visor Tier2] window.open BLOCKED (BiTB suspicious)');
+          return null;
+        }
+        return _originalOpen(...args);
       };
     } catch (e) {
       console.warn('[Visor Tier2] Failed to wrap window.open:', e);
@@ -235,10 +251,22 @@
             (response) => {
               if (chrome.runtime.lastError) return;
               if (response?.block) {
-                document.querySelectorAll('iframe').forEach((fr) => {
-                  fr.style.pointerEvents = 'none';
-                });
-                console.warn('[Visor Tier2] Clickjacking iframe neutralized');
+                const iframes = [...document.querySelectorAll('iframe')];
+                let count = 0;
+                for (const fr of iframes) {
+                  try {
+                    const style = window.getComputedStyle(fr);
+                    const opacity = parseFloat(style.opacity ?? '1');
+                    const zIdx = effectiveZIndex(fr);
+                    const pos = style.position;
+                    if ((pos === 'fixed' || pos === 'absolute') && (zIdx > 10 || opacity < 0.1) && coversViewport(fr)) {
+                      fr.style.pointerEvents = 'none';
+                      fr.setAttribute('data-visor-clickjack-neutralized', 'true');
+                      count++;
+                    }
+                  } catch {}
+                }
+                console.warn(`[Visor Tier2] Clickjacking neutralized: disabled pointer-events on ${count} overlay iframe(s)`);
               }
             }
           );

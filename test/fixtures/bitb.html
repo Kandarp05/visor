@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BiTB Phishing Simulation</title>
+  <!-- Identity host mismatch markers simulating spoofed landing page -->
+  <link rel="canonical" href="https://accounts.google.com/signin">
+  <meta property="og:url" content="https://accounts.google.com/signin">
+</head>
+<body>
+  <h1>Sign In with SSO</h1>
+  <p>Simulating Browser-in-the-Browser fake popup lure.</p>
+  <button id="open-popup-btn" onclick="openFakePopup()">Sign in with Google</button>
+  <div id="status"></div>
+
+  <script>
+    function openFakePopup() {
+      const popup = window.open('https://accounts.google.com/v3/signin/identifier', 'oauth_popup', 'width=500,height=600');
+      const statusEl = document.getElementById('status');
+      if (!popup || popup.closed) {
+        statusEl.textContent = 'BiTB Popup was blocked or returned null!';
+        statusEl.style.color = 'green';
+      } else {
+        statusEl.textContent = 'BiTB Popup opened successfully.';
+        statusEl.style.color = 'red';
+      }
+    }
+  </script>
+</body>
+</html>
