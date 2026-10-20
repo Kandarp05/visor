@@ -31,5 +31,12 @@
   "action": {
     "default_popup": "ui/popup.html",
     "default_title": "Visor"
-  }
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["ui/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
