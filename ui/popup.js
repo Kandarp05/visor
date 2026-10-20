@@ -1,5 +1,5 @@
 // ui/popup.js — live feature vector display with auto-refresh
-// Runs in the popup page context (full Chrome extension APIs available).
+import { classifyAll } from '../models/interface.js';
 
 const REFRESH_INTERVAL_MS = 600;
 
@@ -73,15 +73,6 @@ function renderVerdict(results) {
     : '✓ No threats detected';
 }
 
-// Lazy-import the model interface (same as background.js does)
-// Popup runs in its own page context so it can import ES modules.
-async function classifyVector(vector) {
-  const { classifyAll } = await import('../models/interface.js');
-  return classifyAll(vector);
-}
-
-// ── Main render loop ─────────────────────────────────────────────────────────
-
 async function render() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -112,7 +103,7 @@ async function render() {
     renderFeatures(vector);
 
     // Classify and show scores
-    const results = await classifyVector(vector);
+    const results = classifyAll(vector);
     renderModuleScores(results);
     renderVerdict(results);
 

@@ -1,12 +1,13 @@
 // background.js — service worker
 // Single entry point. Registers Tier 1 listeners, owns the message bus,
-// and (Phase 5+) runs gating logic.
+// and runs gating logic.
 //
-// All top-level listener registrations must be synchronous — MV3 requirement.
+// All imports in service workers must be static (dynamic import() fails in MV3 SW).
 
 import { VISOR_VERSION, MSG } from './lib/constants.js';
 import { init as initTier1 }  from './feature_extractor/tier1_network.js';
-import { getVector, deleteVector } from './feature_extractor/session_state.js';
+import { getVector, updateVector, deleteVector } from './feature_extractor/session_state.js';
+import { classifyAll, classifyBitb, classifyClickjacking } from './models/interface.js';
 
 console.log(`[Visor] background service worker started — v${VISOR_VERSION}`);
 
@@ -23,59 +24,71 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender.tab?.id;
 
-  switch (message.type) {
-
-    // ── Phase 1 liveness ping ─────────────────────────────────────────────
-    case MSG.PHASE1_PING:
-      console.log('[Visor] PHASE1_PING from', sender.tab?.url);
-      sendResponse({ ok: true });
-      break;
-
-    // ── Phase 3: Tier 2 DOM features merged into session vector ───────────
-    case MSG.TIER2_FEATURES:
-      if (!tabId) { sendResponse({ ok: false }); break; }
-      import('./feature_extractor/session_state.js').then(({ updateVector }) =>
-        updateVector(tabId, message.payload)
-      ).then(() => sendResponse({ ok: true }))
-       .catch(() => sendResponse({ ok: false }));
-      return true; // async
-
-    // ── Phase 5: Form submit — classify and respond ────────────────────────
-    case MSG.FORM_SUBMIT:
-      if (!tabId) { sendResponse({ verdict: 'safe', score: 0, module: 'none' }); break; }
-      handleFormSubmit(tabId, sendResponse);
-      return true; // async
-
-    // ── Phase 5: BiTB — window.open intercepted ───────────────────────────
-    case MSG.BITB_WINDOW_OPEN:
-      if (!tabId) { sendResponse({ block: false }); break; }
-      handleBitbOpen(tabId, sendResponse);
-      return true; // async
-
-    // ── Phase 5: Clickjacking — suspicious iframe detected ────────────────
-    case MSG.IFRAME_SUSPICIOUS:
-      if (!tabId) { sendResponse({ block: false }); break; }
-      handleIframeSuspicious(tabId, sendResponse);
-      return true; // async
-
-    default:
-      sendResponse({ ok: false, error: `Unknown message type: ${message.type}` });
+  if (message.type === MSG.PHASE1_PING) {
+    console.log('[Visor] PHASE1_PING from', sender.tab?.url);
+    sendResponse({ ok: true });
+    return false;
   }
+
+  if (message.type === MSG.TIER2_FEATURES) {
+    if (!tabId) {
+      sendResponse({ ok: false });
+      return false;
+    }
+    updateVector(tabId, message.payload)
+      .then((v) => {
+        console.log('[Visor] Tier 2 vector merged for tab', tabId, message.payload);
+        sendResponse({ ok: !!v });
+      })
+      .catch((err) => {
+        console.error('[Visor] TIER2_FEATURES error:', err);
+        sendResponse({ ok: false });
+      });
+    return true; // keep channel open for async response
+  }
+
+  if (message.type === MSG.FORM_SUBMIT) {
+    if (!tabId) {
+      sendResponse({ verdict: 'safe', score: 0, module: 'none' });
+      return false;
+    }
+    handleFormSubmit(tabId, sendResponse);
+    return true;
+  }
+
+  if (message.type === MSG.BITB_WINDOW_OPEN) {
+    if (!tabId) {
+      sendResponse({ block: false });
+      return false;
+    }
+    handleBitbOpen(tabId, sendResponse);
+    return true;
+  }
+
+  if (message.type === MSG.IFRAME_SUSPICIOUS) {
+    if (!tabId) {
+      sendResponse({ block: false });
+      return false;
+    }
+    handleIframeSuspicious(tabId, sendResponse);
+    return true;
+  }
+
+  sendResponse({ ok: false, error: `Unknown message type: ${message.type}` });
+  return false;
 });
 
-// ── Phase 5 gating handlers (stubs until models/interface.js exists) ──────
-// These are defined here so the message switch above compiles cleanly.
-// They import the model interface lazily so Phase 2–4 work without models/.
+// ── Gating handlers ───────────────────────────────────────────────────────
 
 async function handleFormSubmit(tabId, sendResponse) {
   try {
     const vector  = await getVector(tabId);
-    const { classifyAll } = await import('./models/interface.js');
     const results = classifyAll(vector);
     const hit     = results.find((r) => r.verdict === 'suspicious');
+    console.log('[Visor] Form submit classified:', results.map((r) => `${r.module}=${r.score}`).join(' | '));
     sendResponse(hit ?? { verdict: 'safe', score: 0, module: 'none' });
   } catch (e) {
-    console.warn('[Visor] classify error (models not yet built?):', e.message);
+    console.warn('[Visor] classify error:', e);
     sendResponse({ verdict: 'safe', score: 0, module: 'none' });
   }
 }
@@ -83,10 +96,10 @@ async function handleFormSubmit(tabId, sendResponse) {
 async function handleBitbOpen(tabId, sendResponse) {
   try {
     const vector = await getVector(tabId);
-    const { classifyBitb } = await import('./models/interface.js');
     const result = classifyBitb(vector);
     sendResponse({ block: result.verdict === 'suspicious', ...result });
-  } catch {
+  } catch (e) {
+    console.warn('[Visor] bitb classify error:', e);
     sendResponse({ block: false });
   }
 }
@@ -94,10 +107,10 @@ async function handleBitbOpen(tabId, sendResponse) {
 async function handleIframeSuspicious(tabId, sendResponse) {
   try {
     const vector = await getVector(tabId);
-    const { classifyClickjacking } = await import('./models/interface.js');
     const result = classifyClickjacking(vector);
     sendResponse({ block: result.verdict === 'suspicious', ...result });
-  } catch {
+  } catch (e) {
+    console.warn('[Visor] clickjacking classify error:', e);
     sendResponse({ block: false });
   }
 }

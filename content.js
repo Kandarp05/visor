@@ -132,7 +132,27 @@
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', onDomReady, { once: true });
+    window.addEventListener('load', onDomReady, { once: true });
   } else {
     onDomReady();
+  }
+
+  // Backup scans for SPAs / dynamic script renders
+  setTimeout(onDomReady, 500);
+  setTimeout(onDomReady, 1500);
+
+  // Watch for dynamic DOM additions (e.g. login modal or dynamically inserted forms)
+  try {
+    let debounceTimer = null;
+    const observer = new MutationObserver(() => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(onDomReady, 300);
+    });
+    observer.observe(document.documentElement || document.body, {
+      childList: true,
+      subtree: true,
+    });
+  } catch (e) {
+    // ignore observer errors if any
   }
 })();
