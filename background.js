@@ -52,7 +52,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ verdict: 'safe', score: 0, module: 'none' });
       return false;
     }
-    handleFormSubmit(tabId, sendResponse);
+    handleFormSubmit(tabId, message.payload, sendResponse);
     return true;
   }
 
@@ -80,8 +80,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ── Gating handlers ───────────────────────────────────────────────────────
 
-async function handleFormSubmit(tabId, sendResponse) {
+async function handleFormSubmit(tabId, payload, sendResponse) {
   try {
+    if (payload?.features && Object.keys(payload.features).length > 0) {
+      await updateVector(tabId, payload.features);
+    }
     const vector  = await getVector(tabId);
     const results = classifyAll(vector);
     const hit     = results.find((r) => r.verdict === 'suspicious');

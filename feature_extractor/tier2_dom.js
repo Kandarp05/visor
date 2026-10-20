@@ -203,7 +203,11 @@
           event.stopPropagation();
           _pendingForm = form;
 
-          chrome.runtime.sendMessage({ type: 'FORM_SUBMIT', payload: {} }, (response) => {
+          // Fresh scan at the exact moment of submit to capture any last-millisecond DOM changes
+          const fresh = scanDOM();
+          window.__visorLastFeatures = fresh.features;
+
+          chrome.runtime.sendMessage({ type: 'FORM_SUBMIT', payload: { features: fresh.features } }, (response) => {
             if (chrome.runtime.lastError || !response) {
               _submitting = true;
               _pendingForm?.submit();

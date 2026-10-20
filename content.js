@@ -148,17 +148,32 @@
   setTimeout(onDomReady, 500);
   setTimeout(onDomReady, 1500);
 
-  // Watch for dynamic DOM additions (e.g. login modal or dynamically inserted forms)
+  // Continuous extraction: Watch for dynamic DOM additions, attribute updates (e.g. style/type changes)
   try {
     let debounceTimer = null;
-    const observer = new MutationObserver(() => {
+    function triggerScan(delay = 250) {
       clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(onDomReady, 300);
-    });
+      debounceTimer = setTimeout(onDomReady, delay);
+    }
+
+    const observer = new MutationObserver(() => triggerScan(250));
     observer.observe(document.documentElement || document.body, {
       childList: true,
       subtree: true,
+      attributes: true,
+      attributeFilter: ['type', 'action', 'style', 'class', 'href', 'src'],
     });
+
+    // Window resize & scroll keep iframe viewport coverage live
+    window.addEventListener('resize', () => triggerScan(300), { passive: true });
+    window.addEventListener('scroll', () => triggerScan(300), { passive: true });
+
+    // Focus listener to bind dynamically revealed login forms immediately upon interaction
+    document.addEventListener('focusin', (e) => {
+      if (e.target.matches?.('input[type="password"], input[name*="pass" i]')) {
+        onDomReady();
+      }
+    }, { passive: true });
   } catch (e) {
     // ignore observer errors if any
   }
