@@ -29,9 +29,20 @@
   //
   // It names the attack and nothing else. The evidence behind the verdict is
   // not disclosed here — see the popup's Debug panel for that.
+  //
+  // One exception: when the homograph module names the brand the host
+  // impersonates, that fact is shown, because it is what the user has to act
+  // on ("this is not the site you think it is"). It is a reference-list match,
+  // not a model confidence.
 
-  function showInterstitial(verdict) {
-    // Remove existing if re-triggered
+  // Escape text before it goes into the overlay's markup.
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  function showInterstitial(verdict) {    // Remove existing if re-triggered
     document.getElementById('__visor_interstitial')?.remove();
 
     const overlay = document.createElement('div');
@@ -46,10 +57,17 @@
     };
     const heading = MODULE_LABELS[module] ?? 'Phishing attack detected';
 
+    const impersonates = (module === 'homograph' && typeof verdict.impersonates === 'string')
+      ? verdict.impersonates : null;
+    const detail = impersonates
+      ? `<p class="sub">This address is impersonating <strong>${escapeHtml(impersonates)}</strong>.</p>`
+      : '';
+
     overlay.innerHTML = `
       <div id="__visor_box">
         <div id="__visor_icon">⚠️</div>
         <h1>${heading}</h1>
+        ${detail}
         <p class="sub">Visor has blocked this page to protect your credentials.</p>
         <div id="__visor_actions">
           <button id="__visor_back">← Go back (safe)</button>

@@ -7,7 +7,10 @@
 import { VISOR_VERSION, MSG } from './lib/constants.js';
 import { init as initTier1 }  from './feature_extractor/tier1_network.js';
 import { getVector, updateVector, deleteVector } from './feature_extractor/session_state.js';
+import { homographFeatures } from './feature_extractor/homograph.js';
 import { classifyAll, classifyBitb, classifyClickjacking } from './models/interface.js';
+import { classify as classifyHomograph } from './models/homograph_model.js';
+import { projectToAllowlist, HOMOGRAPH_FEATURE_ALLOWLIST } from './lib/model_feature_allowlist.js';
 
 console.log(`[Visor] background service worker started — v${VISOR_VERSION}`);
 
@@ -26,6 +29,27 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // DevTools console. The models are statically imported above.
 globalThis.visorClassify = (vector) => classifyAll(vector);
 globalThis.visorGetVector = (tabId) => getVector(tabId);
+
+/**
+ * Analyse a hostname with the homograph module.
+ *
+ * The homograph attack is a property of the domain name, so this works on any
+ * hostname — there is no live homograph site to navigate to in the testbed.
+ * Exposed for the end-to-end test and for the DevTools console.
+ */
+globalThis.visorAnalyzeHost = (hostname) => {
+  const r = homographFeatures(hostname);
+  if (!r) return null;
+  const vector = { ...r.features, homograph_impersonates: r.target || null };
+  const projected = projectToAllowlist(vector, HOMOGRAPH_FEATURE_ALLOWLIST);
+  return {
+    hostname,
+    unicodeHost: r.unicodeHost,
+    features: r.features,
+    impersonates: r.target || null,
+    result: classifyHomograph(projected),
+  };
+};
 
 // ── Message bus (content script → background) ─────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -96,7 +120,15 @@ async function handleFormSubmit(tabId, payload, sendResponse) {
     const results = classifyAll(vector);
     const hit     = results.find((r) => r.verdict === 'suspicious');
     console.log('[Visor] Form submit classified:', results.map((r) => `${r.module}=${r.score}`).join(' | '));
-    sendResponse(hit ?? { verdict: 'safe', score: 0, module: 'none' });
+    if (!hit) {
+      sendResponse({ verdict: 'safe', score: 0, module: 'none' });
+      return;
+    }
+    // The homograph module can name the brand the host impersonates. That is
+    // shown to the user, because it is what they have to act on.
+    const impersonates = hit.module === 'homograph' && vector?.homograph_impersonates
+      ? vector.homograph_impersonates : null;
+    sendResponse({ block: true, ...hit, impersonates });
   } catch (e) {
     console.warn('[Visor] classify error:', e);
     sendResponse({ verdict: 'safe', score: 0, module: 'none' });

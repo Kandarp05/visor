@@ -122,11 +122,14 @@ function renderVerdict(results) {
     verdictSub.textContent = 'this page looks safe';
   }
 
-  // AiTM is the only implemented module; the rest are placeholders.
-  const aitm = results.find((r) => r.module === 'aitm');
-  scoreEls.aitm.textContent = aitm?.verdict === 'suspicious' ? 'Detected' : 'Not detected';
-  scoreEls.aitm.className = `state ${aitm?.verdict === 'suspicious' ? 'flagged' : 'clear'}`;
-  for (const m of ['bitb', 'homograph', 'clickjacking']) {
+  // AiTM and the homograph module are implemented; the rest are placeholders.
+  for (const m of ['aitm', 'homograph']) {
+    const r = results.find((x) => x.module === m);
+    const flagged = r?.verdict === 'suspicious';
+    scoreEls[m].textContent = flagged ? 'Detected' : 'Not detected';
+    scoreEls[m].className = `state ${flagged ? 'flagged' : 'clear'}`;
+  }
+  for (const m of ['bitb', 'clickjacking']) {
     scoreEls[m].textContent = 'Work in progress';
     scoreEls[m].className = 'state wip';
   }

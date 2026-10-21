@@ -16,29 +16,39 @@ import { classify as classifyAitm }        from './aitm_model.js';
 import { classify as classifyBitbModel }   from './bitb_model.js';
 import { classify as classifyHomograph }   from './homograph_model.js';
 import { classify as classifyCjModel }     from './clickjacking_model.js';
-import { projectToAllowlist } from '../lib/model_feature_allowlist.js';
+import {
+  projectToAllowlist,
+  MODEL_FEATURE_ALLOWLIST,
+  HOMOGRAPH_FEATURE_ALLOWLIST,
+} from '../lib/model_feature_allowlist.js';
 
 /**
  * Run all four classifiers against the feature vector.
  * Returns an array of four result objects (one per module), in priority order.
  * The gating logic uses the first suspicious result it finds.
+ *
+ * Each module is projected onto ITS OWN allowlist. The AiTM and homograph
+ * modules detect different attack classes, so their admissibility rules
+ * differ; a shared projection would either hide a legitimate feature from one
+ * module or expose one module's features to another.
  */
 export function classifyAll(featureVector) {
-  const fv = projectToAllowlist(featureVector);
+  const aitmFv = projectToAllowlist(featureVector, MODEL_FEATURE_ALLOWLIST);
+  const homographFv = projectToAllowlist(featureVector, HOMOGRAPH_FEATURE_ALLOWLIST);
   return [
-    classifyAitm(fv),
-    classifyBitbModel(fv),
-    classifyHomograph(fv),
-    classifyCjModel(fv),
+    classifyAitm(aitmFv),
+    classifyBitbModel(aitmFv),
+    classifyHomograph(homographFv),
+    classifyCjModel(aitmFv),
   ];
 }
 
 /** Run only the BiTB classifier (called on window.open interception). */
 export function classifyBitb(featureVector) {
-  return classifyBitbModel(projectToAllowlist(featureVector));
+  return classifyBitbModel(projectToAllowlist(featureVector, MODEL_FEATURE_ALLOWLIST));
 }
 
 /** Run only the clickjacking classifier (called on iframe detection). */
 export function classifyClickjacking(featureVector) {
-  return classifyCjModel(projectToAllowlist(featureVector));
+  return classifyCjModel(projectToAllowlist(featureVector, MODEL_FEATURE_ALLOWLIST));
 }

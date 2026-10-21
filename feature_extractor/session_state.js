@@ -153,6 +153,18 @@ export function emptyVector(tabId, url = '') {
     entry_path: null,          // 'direct' | 'link_internal' | 'link_referrer'
     referrer_origin: null,
 
+    // ── IDN homograph (a separate attack class, its own allowlist) ───────
+    // Derived purely from the page's hostname, so they are class-generic for
+    // the homograph module by construction.
+    is_punycode: false,
+    mixed_script_flag: false,
+    whole_script_confusable_violation: false,
+    confusable_char_ratio: 0.0,
+    skeleton_exact_match: false,
+    skeleton_edit_distance_min: 10,
+    // Display-only: the brand the reference list matched. No model reads it.
+    homograph_impersonates: null,
+
     // ── Origin-identity leakage via response headers (class-generic) ──────
     identity_host_mismatch_header: null,
     n_identity_mismatch_header: 0,

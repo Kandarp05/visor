@@ -274,8 +274,63 @@ async function main() {
       failures.push('the AiTM model gave both sites the same score');
     }
 
-    console.log('\n══ DOM / CONTENT SCRIPT ═══════════════════════════════════');
-    const tier2Merges = swLog.filter((t) => t.includes('Tier 2 vector merged'));
+    // ── IDN homograph module ────────────────────────────────────────────
+    // The homograph attack is a property of the DOMAIN NAME, so the module is
+    // exercised through the service worker's host analyser. There is no live
+    // homograph site in the testbed, and registering one is not the point.
+    console.log('\n══ HOMOGRAPH MODULE ══════════════════════════════════════');
+    const HG_CASES = [
+      // Punycode host, unicode host, expected verdict, expected impersonated brand.
+      ['xn--pple-43d.com', 'аpple.com', 'suspicious', 'apple.com'],
+      ['xn--ggle-55da.com', 'gооgle.com', 'suspicious', 'google.com'],
+      ['xn--80ak6aa92e.com', 'login.аррӏе.com', 'suspicious', 'apple.com'],
+      ['www.apple.com', 'www.apple.com', 'safe', null],
+      ['xn--bcher-kva.de', 'bücher.de', 'safe', null],
+      ['xn--e1afmkfd.xn--p1ai', 'пример.рф', 'safe', null],
+      ['paypa1.com', 'paypa1.com', 'safe', null],
+      ['wordpress.kandarpjindal.in', 'wordpress.kandarpjindal.in', 'safe', null],
+    ];
+    for (const [puny, uni, wantVerdict, wantBrand] of HG_CASES) {
+      const r = await sw.evaluate((h) => globalThis.visorAnalyzeHost(h), puny);
+      if (!r) {
+        failures.push(`the homograph analyser returned nothing for ${puny}`);
+        continue;
+      }
+      const got = r.result.verdict;
+      const brand = r.impersonates || null;
+      const ok = got === wantVerdict && brand === wantBrand;
+      console.log(`   ${ok ? '✓' : '✗'} ${puny.padEnd(30)} ${got.padEnd(11)} p=${r.result.score.toFixed(3)} ${brand || '-'}`);
+      if (got !== wantVerdict) {
+        failures.push(`${uni}: expected ${wantVerdict}, got ${got}`);
+      }
+      if (brand !== wantBrand) {
+        failures.push(`${uni}: expected to impersonate ${wantBrand}, got ${brand}`);
+      }
+    }
+
+    // The six features must be present in the extension's vector.
+    const hgVec = await sw.evaluate(async () => {
+      const all = await chrome.storage.session.get(null);
+      const key = Object.keys(all).find((k) => k.startsWith('visor:tab:'));
+      const v = key ? all[key] : {};
+      return {
+        is_punycode: v.is_punycode,
+        mixed_script_flag: v.mixed_script_flag,
+        whole_script_confusable_violation: v.whole_script_confusable_violation,
+        confusable_char_ratio: v.confusable_char_ratio,
+        skeleton_exact_match: v.skeleton_exact_match,
+        skeleton_edit_distance_min: v.skeleton_edit_distance_min,
+      };
+    });
+    console.log('   vector:', JSON.stringify(hgVec));
+    for (const k of ['is_punycode', 'mixed_script_flag', 'whole_script_confusable_violation',
+                     'confusable_char_ratio', 'skeleton_exact_match', 'skeleton_edit_distance_min']) {
+      if (!(k in hgVec) || hgVec[k] === undefined || hgVec[k] === null) {
+        failures.push(`the extension vector does not carry ${k}`);
+      }
+    }
+
+    console.log('\n══ DOM / CONTENT SCRIPT ═══════════════════════════════════');    const tier2Merges = swLog.filter((t) => t.includes('Tier 2 vector merged'));
     console.log(`  Tier 2 feature merges seen by the worker: ${tier2Merges.length}`);
     if (tier2Merges.length) console.log(`  last: ${tier2Merges[tier2Merges.length - 1].slice(0, 160)}`);
     if (!tier2Merges.length) failures.push('the Tier 2 content script never reported features');
@@ -334,7 +389,10 @@ async function main() {
     if (!/detected/i.test(popupState.aitm || '')) {
       failures.push(`the AiTM row does not show "Detected" (got "${popupState.aitm}")`);
     }
-    for (const m of ['bitb', 'homograph', 'clickjacking']) {
+    if (!/detected/i.test(popupState.homograph || '')) {
+      failures.push(`the homograph row does not show a verdict (got "${popupState.homograph}")`);
+    }
+    for (const m of ['bitb', 'clickjacking']) {
       if (!/work in progress/i.test(popupState[m] || '')) {
         failures.push(`the ${m} row does not say "Work in progress"`);
       }

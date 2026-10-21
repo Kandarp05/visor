@@ -4,6 +4,7 @@
 // into the session vector as events arrive.
 
 import { createVector, updateVector, mutateVector } from './session_state.js';
+import { homographFeatures } from './homograph.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -222,6 +223,30 @@ function onBeforeNavigate(details) {
   if (details.frameId !== 0) return;
   console.log('[NAV] onBeforeNavigate', { tabId: details.tabId, url: details.url });
   createVector(details.tabId, details.url).catch(() => {});
+  extractHomograph(details.tabId, details.url).catch(() => {});
+}
+
+/**
+ * The IDN homograph module: the six features are a property of the page's
+ * hostname, so they are extracted once per navigation.
+ */
+function extractHomograph(tabId, url) {
+  let host = '';
+  try { host = new URL(url).hostname; } catch { return; }
+  if (!host) return;
+
+  const r = homographFeatures(host);
+  if (!r) return;
+
+  updateVector(tabId, {
+    is_punycode: Boolean(r.features.is_punycode),
+    mixed_script_flag: Boolean(r.features.mixed_script_flag),
+    whole_script_confusable_violation: Boolean(r.features.whole_script_confusable_violation),
+    confusable_char_ratio: Number(r.features.confusable_char_ratio) || 0,
+    skeleton_exact_match: Boolean(r.features.skeleton_exact_match),
+    skeleton_edit_distance_min: Number(r.features.skeleton_edit_distance_min) || 0,
+    homograph_impersonates: r.target || null,
+  }).catch(() => {});
 }
 
 function onCommitted(details) {
