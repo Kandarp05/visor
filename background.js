@@ -20,6 +20,13 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   console.log('[TAB] removed', { tabId });
 });
 
+// ── Test / debug hook ────────────────────────────────────────────────────
+// The service-worker global scope cannot use dynamic import() (per spec), so the
+// classifier is exposed here for the end-to-end test and for debugging from the
+// DevTools console. The models are statically imported above.
+globalThis.visorClassify = (vector) => classifyAll(vector);
+globalThis.visorGetVector = (tabId) => getVector(tabId);
+
 // ── Message bus (content script → background) ─────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender.tab?.id;

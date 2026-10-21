@@ -86,7 +86,7 @@
       return [...hosts];
     }
 
-    // ── document_start: window.open wrap (BiTB) ───────────────────────────
+    // ── BiTB listener from MAIN world ─────────────────────────────────────
     function handleBitbAttempt(targetUrl) {
       console.log('[Visor Tier2] window.open intercepted', { url: targetUrl });
       chrome.runtime.sendMessage(
@@ -112,19 +112,58 @@
       handleBitbAttempt(e.detail?.url ?? '');
     });
 
-    try {
-      const _originalOpen = window.open.bind(window);
-      window.open = function visorOpenWrap(...args) {
-        handleBitbAttempt(args[0] ?? '');
-        if (document.documentElement.getAttribute('data-visor-bitb-block') === 'true') {
-          console.warn('[Visor Tier2] window.open BLOCKED (BiTB suspicious)');
-          return null;
-        }
-        return _originalOpen(...args);
-      };
-    } catch (e) {
-      console.warn('[Visor Tier2] Failed to wrap window.open:', e);
+    // ── Credential field matching (D5) ───────────────────────────────────
+    function isElementVisible(el) {
+      if (!el) return false;
+      if (el.type === 'hidden') return false;
+      if (el.offsetParent !== null) return true;
+      const rects = el.getClientRects();
+      return rects && rects.length > 0;
     }
+
+    function isCredentialInputField(el) {
+      if (!el || el.tagName !== 'INPUT') return false;
+      if (!isElementVisible(el)) return false;
+
+      const rawType = (el.getAttribute('type') || 'text').toLowerCase();
+      const allowedTypes = new Set(['password', 'text', 'email', 'tel', 'number']);
+      if (!allowedTypes.has(rawType)) return false;
+
+      const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
+      const name = (el.getAttribute('name') || '').toLowerCase();
+      const id = (el.getAttribute('id') || '').toLowerCase();
+
+      // 1. Password input
+      if (rawType === 'password' || autocomplete.includes('password')) return true;
+
+      // 2. Email input
+      if (rawType === 'email' || autocomplete.includes('email') || name.includes('email') || id.includes('email')) return true;
+
+      // 3. Username / login input (only visible, matching specific username/login tokens)
+      if (
+        autocomplete.includes('username') ||
+        name === 'username' || name === 'user' || name === 'login' ||
+        name.startsWith('user_') || name.startsWith('login_') ||
+        id === 'username' || id === 'user' || id === 'login'
+      ) {
+        return true;
+      }
+
+      // 4. 2FA / OTP / Authcode (covers authcode, otp, 2fa, one-time-code)
+      if (
+        autocomplete.includes('one-time-code') ||
+        name.includes('auth') || name.includes('otp') ||
+        id.includes('auth') || id.includes('otp')
+      ) {
+        return true;
+      }
+
+      return false;
+    }
+
+    // Expose for unit verification
+    window.__visorIsCredentialInputField = isCredentialInputField;
+    window.__visorIsElementVisible = isElementVisible;
 
     // ── DOM scan ──────────────────────────────────────────────────────────
 
@@ -132,18 +171,30 @@
       const pageHost = location.hostname.toLowerCase();
       const features = {};
 
-      // ── Password fields & form action mismatch ──────────────────────────
+      // Password fields strictly: input[type="password"] or autocomplete containing password
       const passwordFields = [
-        ...document.querySelectorAll('input[type="password"], input[name*="pass" i], input[autocomplete*="password" i]'),
+        ...document.querySelectorAll('input[type="password"], input[autocomplete*="password" i]'),
       ];
       features.has_password_field = passwordFields.length > 0;
-      features.form_action_mismatch = false;
-
-      const formsWithPassword = new Set(
-        passwordFields.map((f) => f.closest('form')).filter(Boolean)
+      features.n_password_fields = passwordFields.length;
+      features.has_autocomplete_current_password = passwordFields.some((f) =>
+        (f.getAttribute('autocomplete') || '').toLowerCase().includes('current-password')
       );
 
-      for (const form of formsWithPassword) {
+      // Credential-bearing forms: forms containing visible human-typed credential inputs (D5)
+      const allInputs = [...document.querySelectorAll('input')];
+      const credInputs = allInputs.filter(isCredentialInputField);
+      const credentialForms = new Set(
+        credInputs.map((f) => f.closest('form')).filter(Boolean)
+      );
+
+      // Form counts and structure
+      features.n_forms = document.forms.length;
+      features.n_inputs = document.querySelectorAll('input').length;
+      features.n_hidden_inputs = document.querySelectorAll('input[type="hidden"]').length;
+      features.form_action_mismatch = false;
+
+      for (const form of credentialForms) {
         const actionHost = hostname(form.action || location.href);
         if (actionHost && actionHost !== pageHost) {
           features.form_action_mismatch = true;
@@ -151,7 +202,7 @@
         }
       }
 
-      // ── Iframes (clickjacking signals) ──────────────────────────────────
+      // Iframes (clickjacking signals)
       const iframes = [...document.querySelectorAll('iframe')];
       features.has_iframe = iframes.length > 0;
       features.iframe_overlap_viewport = false;
@@ -177,12 +228,114 @@
         }
       }
 
-      // ── Identity host mismatch (homograph/AiTM signal) ──────────────────
+      // Identity host mismatch (homograph/AiTM signal)
       const iHosts = identityHosts();
       features.identity_host_mismatch =
         iHosts.length > 0 && iHosts.some((h) => h !== pageHost);
 
-      return { features, formsWithPassword: [...formsWithPassword] };
+      // ── Opaque root-path scripts (class-generic) ─────────────────────────
+      // A proxy that injects a session-bound bootstrap script typically serves it
+      // from a root-relative opaque path the legitimate origin does not serve.
+      // The *shape* generalises across kits; a raw script count does not.
+      const OPAQUE_ROOT_SCRIPT = /\/[0-9a-f]{32,64}\.js$/;
+      const scriptSrcs = [...document.querySelectorAll('script[src]')].map((s) => {
+        const raw = s.getAttribute('src') || '';
+        let path = raw;
+        try { path = new URL(raw, location.href).pathname; } catch {}
+        return path;
+      });
+      const opaqueScripts = scriptSrcs.filter((p) => OPAQUE_ROOT_SCRIPT.test(p));
+      features.script_src_is_opaque_root_path = opaqueScripts.length > 0;
+      features.n_opaque_root_scripts = opaqueScripts.length;
+
+      // Storage keys
+      try {
+        features.localStorage_keys = Object.keys(localStorage);
+      } catch {
+        features.localStorage_keys = [];
+      }
+      try {
+        features.sessionStorage_keys = Object.keys(sessionStorage);
+      } catch {
+        features.sessionStorage_keys = [];
+      }
+
+      // Environment & display
+      features.character_set = document.characterSet || document.charset || null;
+      features.viewport_w = window.innerWidth || document.documentElement.clientWidth;
+      features.viewport_h = window.innerHeight || document.documentElement.clientHeight;
+      features.dpr = window.devicePixelRatio || 1;
+
+      // Navigation Timing breakdown (E1 & E4)
+      try {
+        const navEntries = performance.getEntriesByType('navigation');
+        if (navEntries && navEntries.length > 0) {
+          const nav = navEntries[0];
+          // dns_ms: pooled connection reports 0, fresh reports duration
+          features.dns_ms = (nav.domainLookupEnd >= 0 && nav.domainLookupStart >= 0)
+            ? Math.max(0, nav.domainLookupEnd - nav.domainLookupStart)
+            : 0.0;
+
+          // connect_ms: pooled connection reports 0, fresh reports duration
+          features.connect_ms = (nav.connectEnd >= 0 && nav.connectStart >= 0)
+            ? Math.max(0, nav.connectEnd - nav.connectStart)
+            : 0.0;
+
+          // ssl_ms:
+          // pooled HTTPS connection (secureConnectionStart === 0) -> 0.0
+          // fresh TLS handshake (secureConnectionStart > 0) -> connectEnd - secureConnectionStart
+          // plain HTTP -> null (genuinely not applicable)
+          const isHttps = location.protocol === 'https:';
+          if (isHttps) {
+            features.ssl_ms = (nav.secureConnectionStart > 0 && nav.connectEnd >= nav.secureConnectionStart)
+              ? Math.max(0, nav.connectEnd - nav.secureConnectionStart)
+              : 0.0;
+          } else {
+            features.ssl_ms = null;
+          }
+
+          features.ttfb_ms = (nav.responseStart >= 0 && nav.requestStart >= 0)
+            ? Math.max(0, nav.responseStart - nav.requestStart)
+            : 0.0;
+
+          features.download_ms = (nav.responseEnd >= 0 && nav.responseStart >= 0)
+            ? Math.max(0, nav.responseEnd - nav.responseStart)
+            : 0.0;
+
+          if (nav.domInteractive >= 0) {
+            features.dom_interactive_ms = Math.max(0, nav.domInteractive);
+          }
+          if (nav.domContentLoadedEventEnd >= 0) {
+            features.dom_content_loaded_ms = Math.max(0, nav.domContentLoadedEventEnd);
+          }
+          if (nav.loadEventEnd >= 0) {
+            features.load_event_ms = Math.max(0, nav.loadEventEnd);
+          }
+        }
+
+        // Connection reuse derivation from Resource Timing entries (E1)
+        const resEntries = performance.getEntriesByType('resource') || [];
+        let freshHandshakes = 0;
+        if (navEntries && navEntries.length > 0) {
+          const nav = navEntries[0];
+          if (nav.connectEnd > 0 && (nav.domainLookupEnd > nav.domainLookupStart || nav.connectEnd > nav.connectStart)) {
+            freshHandshakes++;
+          }
+        }
+        for (const res of resEntries) {
+          if (res.connectEnd > 0 && (res.domainLookupEnd > res.domainLookupStart || res.connectEnd > res.connectStart)) {
+            freshHandshakes++;
+          }
+        }
+        const totalRequests = (navEntries && navEntries.length > 0 ? 1 : 0) + resEntries.length;
+        const reuseRatio = totalRequests > 0 ? (1.0 - (freshHandshakes / totalRequests)) : 0.0;
+        features.n_new_connections = freshHandshakes;
+        features.connection_reuse_ratio = parseFloat(reuseRatio.toFixed(3));
+      } catch (e) {
+        // performance timing access failed
+      }
+
+      return { features, credentialForms: [...credentialForms] };
     }
 
     // ── Form submit listener ─────────────────────────────────────────────
@@ -191,8 +344,8 @@
     let _submitting = false;
     const attachedForms = new WeakSet();
 
-    function installFormListeners(formsWithPassword) {
-      for (const form of formsWithPassword) {
+    function installFormListeners(credentialForms) {
+      for (const form of credentialForms) {
         if (attachedForms.has(form)) continue;
         attachedForms.add(form);
 
@@ -238,7 +391,7 @@
 
     window.__visorTier2 = {
       run() {
-        const { features, formsWithPassword } = scanDOM();
+        const { features, credentialForms } = scanDOM();
 
         chrome.runtime.sendMessage(
           { type: 'TIER2_FEATURES', payload: features },
@@ -276,8 +429,8 @@
           );
         }
 
-        if (features.has_password_field) {
-          installFormListeners(formsWithPassword);
+        if (credentialForms.length > 0) {
+          installFormListeners(credentialForms);
         }
 
         return features;

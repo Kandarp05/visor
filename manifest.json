@@ -9,7 +9,8 @@
     "webNavigation",
     "storage",
     "scripting",
-    "tabs"
+    "tabs",
+    "cookies"
   ],
 
   "host_permissions": ["<all_urls>"],

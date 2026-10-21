@@ -170,7 +170,11 @@
 
     // Focus listener to bind dynamically revealed login forms immediately upon interaction
     document.addEventListener('focusin', (e) => {
-      if (e.target.matches?.('input[type="password"], input[name*="pass" i]')) {
+      if (typeof window.__visorIsCredentialInputField === 'function') {
+        if (window.__visorIsCredentialInputField(e.target)) {
+          onDomReady();
+        }
+      } else if (e.target.matches?.('input[type="password"], input[autocomplete*="password" i]')) {
         onDomReady();
       }
     }, { passive: true });

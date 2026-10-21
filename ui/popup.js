@@ -27,21 +27,32 @@ function formatValue(val) {
   return { text: String(val), cls: 'number' };
 }
 
-/** Feature display order and friendly labels. */
+/** Feature display order and friendly labels. Class-generic signals come first. */
 const FEATURE_META = [
-  ['redirect_hop_count',     'Redirect hops'],
-  ['cross_origin_hop_count', 'Cross-origin hops'],
-  ['redirect_chain',         'Redirect chain'],
-  ['cookie_domain_mismatch', 'Cookie domain mismatch'],
-  ['has_hsts',               'HSTS header'],
-  ['has_csp',                'CSP header'],
-  ['protocol',               'Protocol'],
-  ['domain_age_days',        'Domain age (days)'],
-  ['has_password_field',     'Password field'],
-  ['form_action_mismatch',   'Form action mismatch'],
-  ['has_iframe',             'Has iframe'],
-  ['iframe_overlap_viewport','Iframe overlay'],
-  ['identity_host_mismatch', 'Identity host mismatch'],
+  ['identity_host_mismatch_header', 'Origin leak (headers)'],
+  ['n_identity_mismatch_header',   'Foreign origin hosts'],
+  ['ever_saw_identity_mismatch_header', 'Origin leak (session)'],
+  ['identity_host_mismatch',       'Origin leak (body)'],
+  ['n_foreign_origin_headers',     'Foreign origin headers'],
+  ['form_action_mismatch',         'Form action mismatch'],
+  ['cookie_domain_mismatch',       'Cookie domain mismatch'],
+  ['has_referer',                  'Arrived with referrer'],
+  ['entry_path',                   'Entry path'],
+  ['redirect_hop_count',           'Redirect hops'],
+  ['cross_origin_hop_count',       'Cross-origin hops'],
+  ['script_src_is_opaque_root_path','Opaque root script'],
+  ['n_opaque_root_scripts',        'Opaque root scripts'],
+  ['n_third_party_requests',       'Third-party requests'],
+  ['third_party_ratio',            'Third-party ratio'],
+  ['has_password_field',           'Password field'],
+  ['n_password_fields',            'Password fields'],
+  ['n_requests',                   'Requests'],
+  ['n_hosts',                      'Hosts'],
+  ['n_cached',                     'Cached responses'],
+  ['n_cookies',                    'Cookies'],
+  ['n_host_only_cookies',          'Host-only cookies'],
+  ['has_iframe',                   'Has iframe'],
+  ['iframe_overlap_viewport',      'Iframe overlay'],
 ];
 
 function renderFeatures(vector) {
@@ -117,7 +128,7 @@ async function render() {
 
 render();
 
-// Auto-refresh so domain_age_days and other async fields update live
+// Auto-refresh so async fields (e.g. header-derived identity leaks) update live
 const timer = setInterval(render, REFRESH_INTERVAL_MS);
 
 // Stop refreshing when popup is closed

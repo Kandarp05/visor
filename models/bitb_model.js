@@ -16,7 +16,6 @@ export function classify(fv) {
   if (fv.cookie_domain_mismatch === true)  score += 0.50;
   if (fv.identity_host_mismatch === true)  score += 0.30;
   if (fv.form_action_mismatch === true)    score += 0.15;
-  if (fv.domain_age_days !== null && fv.domain_age_days < 14) score += 0.05;
 
   score = Math.min(score, 1.0);
   const verdict = score >= 0.5 ? 'suspicious' : 'safe';

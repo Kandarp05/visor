@@ -63,7 +63,7 @@ async function main() {
   console.log('Navigating tab to https://wordpress.kandarpjindal.in/ ...');
   await sendCdp(pageWs, 'Page.navigate', { url: 'https://wordpress.kandarpjindal.in/' });
   
-  console.log('Waiting 5s for network capture, rdap/crt.sh lookup, and DOM scan...');
+  console.log('Waiting 5s for network capture, header-derived features, and DOM scan...');
   await sleep(5000);
 
   // Check Visor Service Worker
