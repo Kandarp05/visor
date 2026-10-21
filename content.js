@@ -26,6 +26,9 @@
   // ── Interstitial ────────────────────────────────────────────────────────
   // Called by tier2_dom.js via window.__visorShowInterstitial(verdict).
   // Renders a full-viewport overlay, blocking further interaction.
+  //
+  // It names the attack and nothing else. The evidence behind the verdict is
+  // not disclosed here — see the popup's Debug panel for that.
 
   function showInterstitial(verdict) {
     // Remove existing if re-triggered
@@ -34,16 +37,20 @@
     const overlay = document.createElement('div');
     overlay.id = '__visor_interstitial';
 
-    const score = verdict.score != null ? Math.round(verdict.score * 100) : '?';
     const module = verdict.module ?? 'unknown';
+    const MODULE_LABELS = {
+      aitm: 'AiTM attack detected',
+      bitb: 'Browser-in-the-Browser attack detected',
+      homograph: 'Homograph attack detected',
+      clickjacking: 'Clickjacking attempt detected',
+    };
+    const heading = MODULE_LABELS[module] ?? 'Phishing attack detected';
 
     overlay.innerHTML = `
       <div id="__visor_box">
         <div id="__visor_icon">⚠️</div>
-        <h1>Potential Phishing Detected</h1>
-        <p class="sub">Visor's <strong>${module.toUpperCase()}</strong> detector flagged this page
-           (confidence: <strong>${score}%</strong>).</p>
-        <div id="__visor_features"></div>
+        <h1>${heading}</h1>
+        <p class="sub">Visor has blocked this page to protect your credentials.</p>
         <div id="__visor_actions">
           <button id="__visor_back">← Go back (safe)</button>
           <button id="__visor_proceed">Proceed anyway</button>
@@ -70,11 +77,6 @@
       #__visor_box h1 { color: #ef4444; font-size: 1.4rem; margin: 0 0 12px; }
       #__visor_box .sub { color: #94a3b8; font-size: 0.9rem; margin: 0 0 20px; }
       #__visor_box .note { color: #475569; font-size: 0.75rem; margin-top: 16px; }
-      #__visor_features {
-        background: #1e293b; border-radius: 8px; padding: 12px 16px;
-        text-align: left; font-size: 0.8rem; color: #cbd5e1;
-        margin-bottom: 20px; min-height: 40px;
-      }
       #__visor_actions { display: flex; gap: 12px; justify-content: center; }
       #__visor_back {
         background: #16a34a; color: white; border: none;
@@ -90,16 +92,6 @@
       #__visor_proceed:hover { border-color: #64748b; color: #e2e8f0; }
     `;
     overlay.prepend(style);
-
-    // Populate top feature flags
-    const featuresEl = overlay.querySelector('#__visor_features');
-    const pendingVector = window.__visorLastFeatures ?? {};
-    const flagged = Object.entries(pendingVector)
-      .filter(([, v]) => v === true)
-      .map(([k]) => `• ${k.replace(/_/g, ' ')}`);
-    featuresEl.innerHTML = flagged.length
-      ? '<b>Signals detected:</b><br>' + flagged.join('<br>')
-      : 'Feature details unavailable.';
 
     // Button handlers
     overlay.querySelector('#__visor_back').addEventListener('click', () => {

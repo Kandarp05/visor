@@ -186,7 +186,62 @@ async function main() {
       failures.push(`the AiTM model did not flag the proxied login page (score ${loginAitm?.score})`);
     }
 
-    // ── 4. Checks ────────────────────────────────────────────────────────
+    // ── 4. The interstitial (the gate itself) ────────────────────────────
+    // Submitting credentials on the proxied login page must raise the
+    // interstitial, and the interstitial must name the attack without
+    // disclosing the evidence behind it.
+    const submitInfo = await page.evaluate(() => {
+      const form = document.getElementById('loginform') || document.querySelector('form');
+      const user = document.getElementById('user_login') || document.querySelector('input[type="text"]');
+      const pass = document.getElementById('user_pass') || document.querySelector('input[type="password"]');
+      if (user) user.value = 'testuser';
+      if (pass) pass.value = 'NotARealPassword!1';
+      if (form && typeof form.requestSubmit === 'function') form.requestSubmit();
+      else if (form) form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      return { formFound: !!form, passFound: !!pass };
+    }).catch((e) => ({ error: e.message }));
+    await sleep(2500);
+
+    const interstitial = await page.evaluate(() => {
+      const el = document.getElementById('__visor_interstitial');
+      if (!el) return { present: false };
+      const text = el.innerText || '';
+      return {
+        present: true,
+        heading: el.querySelector('h1')?.textContent ?? '',
+        text,
+        hasBack: !!el.querySelector('#__visor_back'),
+        hasProceed: !!el.querySelector('#__visor_proceed'),
+        leaksReasons: /signal|feature|confidence|score/i.test(text),
+      };
+    }).catch((e) => ({ error: e.message }));
+    console.log('\n══ INTERSTITIAL ══════════════════════════════════════════');
+    console.log('   submit:', JSON.stringify(submitInfo));
+    console.log('   ', JSON.stringify({
+      present: interstitial.present,
+      heading: interstitial.heading,
+      hasBack: interstitial.hasBack,
+      hasProceed: interstitial.hasProceed,
+      leaksReasons: interstitial.leaksReasons,
+    }));
+    if (!interstitial.present) {
+      failures.push('the interstitial did not appear on credential submission');
+    } else {
+      if (!/aitm/i.test(interstitial.heading || '')) {
+        failures.push(`the interstitial does not name the attack (heading: "${interstitial.heading}")`);
+      }
+      if (interstitial.leaksReasons) {
+        failures.push('the interstitial discloses the evidence behind the verdict');
+      }
+      if (!interstitial.hasBack || !interstitial.hasProceed) {
+        failures.push('the interstitial is missing its Go back / Proceed anyway controls');
+      }
+    }
+    // Dismiss it so the rest of the run is unaffected.
+    await page.evaluate(() => document.getElementById('__visor_proceed')?.click()).catch(() => {});
+    await sleep(500);
+
+    // ── 5. Checks ────────────────────────────────────────────────────────
     console.log('\n══ VERDICT ══════════════════════════════════════════════');
     const bAitm = benignVerdicts.find((r) => r.module === 'aitm');
     const pAitm = phishVerdicts.find((r) => r.module === 'aitm');
@@ -225,21 +280,70 @@ async function main() {
     else console.log(`  Tier 2 fields present in the vector: ${tier2Fields.join(', ')}`);
 
     // ── 5. Popup UI ───────────────────────────────────────────────────────
+    // The popup is opened as a tab here, so it would otherwise read *itself*
+    // as the active tab. Stub chrome.tabs.query to point at the phish tab, the
+    // way a real browser popup reads the page the user is on.
     const extId = new URL(sw.url()).host;
+    const phishTabId = await sw.evaluate(async () => {
+      const tabs = await chrome.tabs.query({});
+      return tabs.find((t) => t.url && t.url.includes('phish.kandarpjindal.in'))?.id ?? null;
+    });
+    if (!phishTabId) throw new Error('could not find the phish tab id');
+
     const popup = await ctx.newPage();
+    await popup.addInitScript((tabId) => {
+      try {
+        Object.defineProperty(chrome, 'tabs', {
+          value: {
+            query: async (info) => (info && info.active)
+              ? [{ id: tabId, url: 'https://wordpress.phish.kandarpjindal.in/' }]
+              : [],
+          },
+          configurable: true,
+        });
+      } catch (e) { window.__stubError = e.message; }
+    }, phishTabId);
     await popup.goto(`chrome-extension://${extId}/ui/popup.html`, { waitUntil: 'domcontentloaded' })
       .catch(() => {});
     await sleep(2500);
     const popupState = await popup.evaluate(() => ({
       banner: document.getElementById('verdict-banner')?.className ?? null,
       verdict: document.getElementById('verdict-text')?.textContent ?? null,
-      rows: document.querySelectorAll('#feature-list .feature-row').length,
-      aitmScore: document.getElementById('score-aitm')?.textContent ?? null,
+      aitm: document.getElementById('score-aitm')?.textContent ?? null,
+      bitb: document.getElementById('score-bitb')?.textContent ?? null,
+      homograph: document.getElementById('score-homograph')?.textContent ?? null,
+      clickjacking: document.getElementById('score-clickjacking')?.textContent ?? null,
+      debugHidden: !document.getElementById('debug-panel')?.classList.contains('open'),
+      featureRows: document.querySelectorAll('#feature-list .feature-row').length,
     })).catch((e) => ({ error: e.message }));
     console.log('\n══ POPUP UI ══════════════════════════════════════════════');
     console.log('  ', JSON.stringify(popupState));
-    if (!popupState.rows) {
-      failures.push('the popup rendered no feature rows');
+
+    if (popupState.debugHidden !== true) {
+      failures.push('the debug panel is not hidden by default');
+    }
+    if (!/threat detected/i.test(popupState.verdict || '')) {
+      failures.push(`the popup did not report the threat (verdict: "${popupState.verdict}")`);
+    }
+    if (!/detected/i.test(popupState.aitm || '')) {
+      failures.push(`the AiTM row does not show "Detected" (got "${popupState.aitm}")`);
+    }
+    for (const m of ['bitb', 'homograph', 'clickjacking']) {
+      if (!/work in progress/i.test(popupState[m] || '')) {
+        failures.push(`the ${m} row does not say "Work in progress"`);
+      }
+    }
+
+    // The debug toggle must reveal the feature vector.
+    await popup.click('#debug-toggle').catch(() => {});
+    await sleep(400);
+    const afterToggle = await popup.evaluate(() => ({
+      open: document.getElementById('debug-panel')?.classList.contains('open'),
+      rows: document.querySelectorAll('#feature-list .feature-row').length,
+    })).catch(() => ({}));
+    console.log('   after debug toggle:', JSON.stringify(afterToggle));
+    if (!afterToggle.open || !afterToggle.rows) {
+      failures.push('the debug toggle did not reveal the feature vector');
     }
     await popup.close();
 

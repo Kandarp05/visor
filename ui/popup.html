@@ -8,9 +8,8 @@
 
     body {
       font-family: system-ui, -apple-system, sans-serif;
-      width: 360px; min-height: 200px;
+      width: 320px;
       background: #0b0e16; color: #e2e8f0;
-      padding: 0;
     }
 
     /* ── Header ── */
@@ -24,64 +23,89 @@
 
     /* ── Verdict banner ── */
     #verdict-banner {
-      padding: 10px 16px;
-      font-size: 0.8rem; font-weight: 600;
-      display: flex; align-items: center; gap: 8px;
-    }
-    #verdict-banner.safe       { background: #052e16; color: #4ade80; }
-    #verdict-banner.suspicious { background: #450a0a; color: #f87171; }
-    #verdict-banner.loading    { background: #1e293b; color: #94a3b8; }
-    #verdict-banner .dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .safe .dot       { background: #4ade80; }
-    .suspicious .dot { background: #f87171; box-shadow: 0 0 6px #f87171; }
-    .loading .dot    { background: #64748b; }
-
-    /* ── Module scores ── */
-    #modules {
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 1px; background: #1e2a3a;
+      padding: 20px 16px;
+      display: flex; align-items: center; gap: 12px;
       border-bottom: 1px solid #1e2a3a;
     }
-    .module-card {
-      background: #0b0e16; padding: 10px 14px;
+    #verdict-banner .dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      flex-shrink: 0;
     }
-    .module-card .label { font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
-    .module-card .score { font-size: 1.1rem; font-weight: 700; margin-top: 2px; }
-    .module-card .score.safe       { color: #4ade80; }
-    .module-card .score.suspicious { color: #f87171; }
-    .module-card .score.unknown    { color: #475569; }
+    #verdict-banner .label {
+      font-size: 1rem; font-weight: 700; letter-spacing: -0.01em;
+    }
+    #verdict-banner .sub {
+      font-size: 0.7rem; color: #64748b; margin-top: 2px;
+    }
+    #verdict-banner.safe       { background: #052e16; }
+    #verdict-banner.safe .dot       { background: #4ade80; }
+    #verdict-banner.safe .label     { color: #4ade80; }
+    #verdict-banner.suspicious { background: #450a0a; }
+    #verdict-banner.suspicious .dot   { background: #f87171; box-shadow: 0 0 8px #f87171; }
+    #verdict-banner.suspicious .label { color: #f87171; }
+    #verdict-banner.loading    { background: #1e293b; }
+    #verdict-banner.loading .dot    { background: #64748b; }
+    #verdict-banner.loading .label  { color: #94a3b8; }
 
-    /* ── Feature vector ── */
-    #features-section { padding: 10px 16px; }
-    #features-section h2 {
-      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
-      color: #475569; margin-bottom: 8px;
+    /* ── Module list ── */
+    #modules { border-bottom: 1px solid #1e2a3a; }
+    .module-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 16px; border-bottom: 1px solid #141c29;
+      font-size: 0.8rem;
+    }
+    .module-row:last-child { border-bottom: none; }
+    .module-row .name { color: #94a3b8; }
+    .module-row .state { font-weight: 600; font-size: 0.75rem; }
+    .module-row .state.clear    { color: #4ade80; }
+    .module-row .state.flagged  { color: #f87171; }
+    .module-row .state.wip      { color: #475569; font-weight: 500; font-style: italic; }
+
+    /* ── Debug ── */
+    #debug-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      width: 100%; padding: 9px 16px;
+      background: none; border: none; border-bottom: 1px solid #141c29;
+      color: #475569; font-size: 0.7rem; cursor: pointer;
+      font-family: inherit; text-align: left;
+    }
+    #debug-toggle:hover { color: #7dd3fc; }
+    #debug-toggle .caret { transition: transform 0.15s ease; }
+    #debug-toggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
+
+    #debug-panel { display: none; padding: 10px 16px 12px; border-bottom: 1px solid #1e2a3a; }
+    #debug-panel.open { display: block; }
+    #debug-panel h2 {
+      font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: #475569; margin-bottom: 6px;
     }
     .feature-row {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 4px 0; border-bottom: 1px solid #1e2a3a; font-size: 0.78rem;
+      padding: 3px 0; border-bottom: 1px solid #141c29; font-size: 0.75rem;
     }
     .feature-row:last-child { border-bottom: none; }
-    .feature-name { color: #94a3b8; }
+    .feature-name { color: #64748b; }
     .feature-val  { font-weight: 600; font-variant-numeric: tabular-nums; }
     .feature-val.true    { color: #f87171; }
     .feature-val.false   { color: #4ade80; }
     .feature-val.number  { color: #7dd3fc; }
     .feature-val.pending { color: #475569; font-style: italic; }
     .feature-val.null    { color: #334155; }
+    #debug-scores {
+      margin-top: 10px; padding-top: 8px; border-top: 1px solid #1e2a3a;
+      font-size: 0.7rem; color: #64748b;
+    }
+    #debug-scores div { padding: 2px 0; }
 
     /* ── Footer ── */
     footer {
       padding: 8px 16px; font-size: 0.65rem; color: #334155;
-      border-top: 1px solid #1e2a3a;
-      display: flex; justify-content: space-between;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
     }
+    #tab-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #refresh-btn {
       background: none; border: none; color: #475569;
-      font-size: 0.65rem; cursor: pointer; padding: 0;
+      font-size: 0.8rem; cursor: pointer; padding: 0; flex-shrink: 0;
     }
     #refresh-btn:hover { color: #7dd3fc; }
   </style>
@@ -96,36 +120,45 @@
 
 <div id="verdict-banner" class="loading">
   <span class="dot"></span>
-  <span id="verdict-text">Loading…</span>
+  <div>
+    <div class="label" id="verdict-text">Loading…</div>
+    <div class="sub" id="verdict-sub">checking this page</div>
+  </div>
 </div>
 
 <div id="modules">
-  <div class="module-card" id="mod-aitm">
-    <div class="label">AiTM</div>
-    <div class="score unknown" id="score-aitm">—</div>
+  <div class="module-row">
+    <span class="name">AiTM</span>
+    <span class="state clear" id="score-aitm">Not detected</span>
   </div>
-  <div class="module-card" id="mod-bitb">
-    <div class="label">BiTB</div>
-    <div class="score unknown" id="score-bitb">—</div>
+  <div class="module-row">
+    <span class="name">BiTB</span>
+    <span class="state wip" id="score-bitb">Work in progress</span>
   </div>
-  <div class="module-card" id="mod-homograph">
-    <div class="label">Homograph</div>
-    <div class="score unknown" id="score-homograph">—</div>
+  <div class="module-row">
+    <span class="name">Homograph</span>
+    <span class="state wip" id="score-homograph">Work in progress</span>
   </div>
-  <div class="module-card" id="mod-clickjacking">
-    <div class="label">Clickjacking</div>
-    <div class="score unknown" id="score-clickjacking">—</div>
+  <div class="module-row">
+    <span class="name">Clickjacking</span>
+    <span class="state wip" id="score-clickjacking">Work in progress</span>
   </div>
 </div>
 
-<div id="features-section">
-  <h2>Feature Vector</h2>
+<button id="debug-toggle" aria-expanded="false">
+  <span>Debug</span>
+  <span class="caret">›</span>
+</button>
+
+<div id="debug-panel">
+  <h2>Feature vector</h2>
   <div id="feature-list">
     <div class="feature-row">
       <span class="feature-name">—</span>
       <span class="feature-val pending">waiting…</span>
     </div>
   </div>
+  <div id="debug-scores"></div>
 </div>
 
 <footer>

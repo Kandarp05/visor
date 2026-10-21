@@ -24,7 +24,16 @@ uses `channel: 'chromium'` (the new headless mode), which does.
    environment.
 3. The AiTM model runs and returns a verdict for all three pages.
 4. The three pages get **different scores** (benign vs proxied).
-5. The Tier 2 content script reports features to the worker (Tier 2 runs in the
+5. The **interstitial** appears on credential submission, names the attack
+   ("AiTM attack detected"), offers Go back / Proceed anyway, and **discloses no
+   evidence** — the check fails if the text mentions signals, features, confidence or
+   score.
+6. The **popup** shows the minimal view: a single verdict, AiTM as Detected /
+   Not detected, the other three modules as "Work in progress", and the feature
+   vector hidden behind the Debug toggle. The check fails if the debug panel is open
+   by default, if the toggle does not reveal it, or if a module shows anything other
+   than "Work in progress".
+7. The Tier 2 content script reports features to the worker (Tier 2 runs in the
    content script's isolated world, so it is invisible to `page.evaluate()` — the test
    watches the worker's console instead).
 
@@ -75,8 +84,24 @@ credentials are submitted.
   phish (home)      aitm score = 1  (suspicious)
   phish (login)     aitm score = 1  (suspicious)
 
+══ INTERSTITIAL ══════════════════════════════════════════
+    {"present":true,"heading":"AiTM attack detected","hasBack":true,
+     "hasProceed":true,"leaksReasons":false}
+
+══ POPUP UI ══════════════════════════════════════════════
+   {"banner":"suspicious","verdict":"Threat detected","aitm":"Detected",
+    "bitb":"Work in progress","homograph":"Work in progress",
+    "clickjacking":"Work in progress","debugHidden":true,"featureRows":24}
+   after debug toggle: {"open":true,"rows":24}
+
 ✓ END-TO-END TEST PASSED
 ```
+
+### Note on the popup check
+
+The popup is opened as a tab by the test, so it would otherwise read *itself* as the
+active tab. The test stubs `chrome.tabs.query` to point at the phish tab — the way a
+real browser popup reads the page the user is on.
 
 ## `run_checks.js` / `suite_runner.js` — manual, against a running Chrome
 

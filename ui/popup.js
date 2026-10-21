@@ -1,19 +1,27 @@
-// ui/popup.js — live feature vector display with auto-refresh
+// ui/popup.js — minimal popup: a verdict, the module list, and a debug panel.
+//
+// The popup shows one thing: whether an attack was detected. Everything else
+// (the feature vector, the raw model scores) lives behind the Debug toggle.
 import { classifyAll } from '../models/interface.js';
 
 const REFRESH_INTERVAL_MS = 600;
+const DEBUG_KEY = 'visor:debug';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const verdictBanner = document.getElementById('verdict-banner');
 const verdictText   = document.getElementById('verdict-text');
+const verdictSub    = document.getElementById('verdict-sub');
 const featureList   = document.getElementById('feature-list');
+const debugPanel    = document.getElementById('debug-panel');
+const debugToggle   = document.getElementById('debug-toggle');
+const debugScores   = document.getElementById('debug-scores');
 const tabUrlEl      = document.getElementById('tab-url');
 
 const scoreEls = {
-  aitm:        document.getElementById('score-aitm'),
-  bitb:        document.getElementById('score-bitb'),
-  homograph:   document.getElementById('score-homograph'),
-  clickjacking:document.getElementById('score-clickjacking'),
+  aitm:         document.getElementById('score-aitm'),
+  bitb:         document.getElementById('score-bitb'),
+  homograph:    document.getElementById('score-homograph'),
+  clickjacking: document.getElementById('score-clickjacking'),
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -27,7 +35,7 @@ function formatValue(val) {
   return { text: String(val), cls: 'number' };
 }
 
-/** Feature display order and friendly labels. Class-generic signals come first. */
+/** Feature display order and friendly labels (debug view only). */
 const FEATURE_META = [
   ['identity_host_mismatch_header', 'Origin leak (headers)'],
   ['n_identity_mismatch_header',   'Foreign origin hosts'],
@@ -55,6 +63,33 @@ const FEATURE_META = [
   ['iframe_overlap_viewport',      'Iframe overlay'],
 ];
 
+// ── Debug panel ─────────────────────────────────────────────────────────────
+
+let debugOpen = false;
+
+async function loadDebugState() {
+  try {
+    const s = await chrome.storage.local.get(DEBUG_KEY);
+    debugOpen = Boolean(s[DEBUG_KEY]);
+  } catch {
+    debugOpen = false;
+  }
+  applyDebugVisibility();
+}
+
+function applyDebugVisibility() {
+  debugPanel.classList.toggle('open', debugOpen);
+  debugToggle.setAttribute('aria-expanded', String(debugOpen));
+}
+
+debugToggle.addEventListener('click', async () => {
+  debugOpen = !debugOpen;
+  applyDebugVisibility();
+  try {
+    await chrome.storage.local.set({ [DEBUG_KEY]: debugOpen });
+  } catch { /* storage unavailable — the panel still toggles for this session */ }
+});
+
 function renderFeatures(vector) {
   const rows = FEATURE_META.map(([key, label]) => {
     const { text, cls } = formatValue(vector[key]);
@@ -66,23 +101,38 @@ function renderFeatures(vector) {
   featureList.innerHTML = rows.join('');
 }
 
-function renderModuleScores(results) {
-  for (const r of results) {
-    const el = scoreEls[r.module];
-    if (!el) continue;
-    const pct = Math.round((r.score ?? 0) * 100);
-    el.textContent = `${pct}%`;
-    el.className = `score ${r.verdict}`;
+function renderDebugScores(results) {
+  debugScores.innerHTML = results
+    .map((r) => `<div>${r.module}: <strong>${(r.score ?? 0).toFixed(3)}</strong> — ${r.verdict}</div>`)
+    .join('');
+}
+
+// ── Verdict ─────────────────────────────────────────────────────────────────
+
+function renderVerdict(results) {
+  const hit = results.find((r) => r.verdict === 'suspicious');
+
+  if (hit) {
+    verdictBanner.className = 'suspicious';
+    verdictText.textContent = 'Threat detected';
+    verdictSub.textContent = `blocked at the point of harm — ${hit.module.toUpperCase()}`;
+  } else {
+    verdictBanner.className = 'safe';
+    verdictText.textContent = 'No threats detected';
+    verdictSub.textContent = 'this page looks safe';
+  }
+
+  // AiTM is the only implemented module; the rest are placeholders.
+  const aitm = results.find((r) => r.module === 'aitm');
+  scoreEls.aitm.textContent = aitm?.verdict === 'suspicious' ? 'Detected' : 'Not detected';
+  scoreEls.aitm.className = `state ${aitm?.verdict === 'suspicious' ? 'flagged' : 'clear'}`;
+  for (const m of ['bitb', 'homograph', 'clickjacking']) {
+    scoreEls[m].textContent = 'Work in progress';
+    scoreEls[m].className = 'state wip';
   }
 }
 
-function renderVerdict(results) {
-  const anySuspicious = results.some((r) => r.verdict === 'suspicious');
-  verdictBanner.className = anySuspicious ? 'suspicious' : 'safe';
-  verdictText.textContent = anySuspicious
-    ? `⚠ Suspicious — ${results.filter(r => r.verdict === 'suspicious').map(r => r.module.toUpperCase()).join(', ')}`
-    : '✓ No threats detected';
-}
+// ── Main ────────────────────────────────────────────────────────────────────
 
 async function render() {
   try {
@@ -92,47 +142,45 @@ async function render() {
       return;
     }
 
-    // Show URL in footer (truncated)
     const url = tab.url ?? '';
-    tabUrlEl.textContent = url.length > 45 ? url.slice(0, 42) + '…' : url;
+    tabUrlEl.textContent = url.length > 42 ? url.slice(0, 39) + '…' : url;
     tabUrlEl.title = url;
 
-    // Read feature vector from session storage
     const key = `visor:tab:${tab.id}`;
     const stored = await chrome.storage.session.get(key);
     const vector = stored[key];
 
     if (!vector) {
       verdictBanner.className = 'loading';
-      verdictText.textContent = 'No data for this tab yet';
+      verdictText.textContent = 'Loading…';
+      verdictSub.textContent = 'checking this page';
       featureList.innerHTML = `<div class="feature-row">
-        <span class="feature-name" style="color:#475569">Navigate to a page to start extraction.</span>
+        <span class="feature-name">—</span>
+        <span class="feature-val pending">waiting…</span>
       </div>`;
       return;
     }
 
-    renderFeatures(vector);
-
-    // Classify and show scores
     const results = classifyAll(vector);
-    renderModuleScores(results);
     renderVerdict(results);
+    renderFeatures(vector);
+    renderDebugScores(results);
 
   } catch (err) {
-    verdictText.textContent = `Error: ${err.message}`;
+    verdictText.textContent = 'Error';
+    verdictSub.textContent = err.message;
     console.error('[Visor popup]', err);
   }
 }
 
-// ── Init ─────────────────────────────────────────────────────────────────────
+// ── Init ────────────────────────────────────────────────────────────────────
 
+loadDebugState();
 render();
 
-// Auto-refresh so async fields (e.g. header-derived identity leaks) update live
+// Auto-refresh so async fields (e.g. header-derived identity leaks) update live.
 const timer = setInterval(render, REFRESH_INTERVAL_MS);
 
-// Stop refreshing when popup is closed
 window.addEventListener('unload', () => clearInterval(timer));
 
-// Manual refresh button
 document.getElementById('refresh-btn').addEventListener('click', render);
