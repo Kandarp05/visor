@@ -100,9 +100,27 @@
     overlay.querySelector('#__visor_proceed').addEventListener('click', () => {
       overlay.remove();
       const form = window.__visorPendingForm;
+      const submitter = window.__visorPendingSubmitter || null;
       if (form) {
         window.__visorPendingForm = null;
-        form.submit(); // native submit — bypasses JS listeners
+        window.__visorPendingSubmitter = null;
+        // A form control named "submit" shadows HTMLFormElement.prototype.submit
+        // (the two-factor plugin's 2FA form has <input name="submit">), so
+        // form.submit() would throw. Go through the prototype, and pass the
+        // button so its name/value is sent like a real click.
+        if (typeof window.__visorNativeSubmit === 'function') {
+          window.__visorNativeSubmit(form, submitter);
+        } else {
+          try {
+            if (submitter && typeof form.requestSubmit === 'function') {
+              form.requestSubmit(submitter);
+            } else {
+              HTMLFormElement.prototype.submit.call(form);
+            }
+          } catch (e) {
+            console.warn('[Visor] could not submit form', e);
+          }
+        }
       }
     });
 

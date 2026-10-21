@@ -196,7 +196,13 @@ async function main() {
       const pass = document.getElementById('user_pass') || document.querySelector('input[type="password"]');
       if (user) user.value = 'testuser';
       if (pass) pass.value = 'NotARealPassword!1';
-      if (form && typeof form.requestSubmit === 'function') form.requestSubmit();
+      // Click the submit button like a user would. A programmatic requestSubmit()
+      // is deliberately blocked by the extension: the credential may only be sent
+      // on an explicit user action.
+      if (form) {
+        const btn = form.querySelector('[type="submit"]') || form.querySelector('button');
+        if (btn) btn.click();
+      }
       else if (form) form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
       return { formFound: !!form, passFound: !!pass };
     }).catch((e) => ({ error: e.message }));
