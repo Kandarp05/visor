@@ -378,6 +378,8 @@
      */
     function nativeSubmit(form, submitter) {
       if (!form) return;
+      setFormBusy(form, false);
+      _submitting = true;
       try {
         if (submitter && typeof form.requestSubmit === 'function') {
           // We disabled the button when we locked the form; requestSubmit()
@@ -395,6 +397,8 @@
         } catch (e2) {
           console.warn('[Visor] fallback submit failed:', e2);
         }
+      } finally {
+        _submitting = false;
       }
     }
     window.__visorNativeSubmit = nativeSubmit;
@@ -505,27 +509,24 @@
 
           chrome.runtime.sendMessage({ type: 'FORM_SUBMIT', payload: { features: fresh.features } }, (response) => {
             if (chrome.runtime.lastError || !response) {
-              _submitting = true;
               nativeSubmit(_pendingForm, _pendingSubmitter);
-              _submitting = false;
               _pendingForm = null;
               _pendingSubmitter = null;
-              setFormBusy(form, false);
               return;
             }
 
             if (response.verdict === 'suspicious') {
               window.__visorPendingForm = _pendingForm;
               window.__visorPendingSubmitter = _pendingSubmitter;
+              _pendingForm = null;
+              _pendingSubmitter = null;
               if (typeof window.__visorShowInterstitial === 'function') {
                 window.__visorShowInterstitial(response);
               } else {
                 alert(`[Visor Warning] Phishing detected (${response.module.toUpperCase()}). Submission blocked.`);
               }
             } else {
-              _submitting = true;
               nativeSubmit(_pendingForm, _pendingSubmitter);
-              _submitting = false;
               _pendingForm = null;
               _pendingSubmitter = null;
               // The page is navigating away; keep the form locked.
