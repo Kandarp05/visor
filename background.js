@@ -8,7 +8,7 @@ import { VISOR_VERSION, MSG } from './lib/constants.js';
 import { init as initTier1 }  from './feature_extractor/tier1_network.js';
 import { getVector, updateVector, deleteVector } from './feature_extractor/session_state.js';
 import { homographFeatures } from './feature_extractor/homograph.js';
-import { classifyAll, classifyBitb, classifyClickjacking } from './models/interface.js';
+import { classifyAll, classifyBitb, classifyClickjacking, IMPLEMENTED_MODULES } from './models/interface.js';
 import { classify as classifyHomograph } from './models/homograph_model.js';
 import { projectToAllowlist, HOMOGRAPH_FEATURE_ALLOWLIST } from './lib/model_feature_allowlist.js';
 
@@ -118,7 +118,7 @@ async function handleFormSubmit(tabId, payload, sendResponse) {
     }
     const vector  = await getVector(tabId);
     const results = classifyAll(vector);
-    const hit     = results.find((r) => r.verdict === 'suspicious');
+    const hit     = results.find((r) => r.verdict === 'suspicious' && IMPLEMENTED_MODULES.includes(r.module));
     console.log('[Visor] Form submit classified:', results.map((r) => `${r.module}=${r.score}`).join(' | '));
     if (!hit) {
       sendResponse({ verdict: 'safe', score: 0, module: 'none' });
@@ -139,7 +139,9 @@ async function handleBitbOpen(tabId, sendResponse) {
   try {
     const vector = await getVector(tabId);
     const result = classifyBitb(vector);
-    sendResponse({ block: result.verdict === 'suspicious', ...result });
+    // A placeholder module cannot block, even if it somehow returned suspicious.
+    const block = result.verdict === 'suspicious' && IMPLEMENTED_MODULES.includes(result.module);
+    sendResponse({ block, ...result });
   } catch (e) {
     console.warn('[Visor] bitb classify error:', e);
     sendResponse({ block: false });
@@ -150,7 +152,9 @@ async function handleIframeSuspicious(tabId, sendResponse) {
   try {
     const vector = await getVector(tabId);
     const result = classifyClickjacking(vector);
-    sendResponse({ block: result.verdict === 'suspicious', ...result });
+    // A placeholder module cannot block, even if it somehow returned suspicious.
+    const block = result.verdict === 'suspicious' && IMPLEMENTED_MODULES.includes(result.module);
+    sendResponse({ block, ...result });
   } catch (e) {
     console.warn('[Visor] clickjacking classify error:', e);
     sendResponse({ block: false });

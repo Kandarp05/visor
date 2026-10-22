@@ -330,6 +330,28 @@ async function main() {
       }
     }
 
+    // ── Placeholder-module guard ──────────────────────────────────────────
+    // The stub models must always return 'safe' — they must never gate the page.
+    // The exact case that fired this bug: a benign vector with cookie_domain_mismatch
+    // must NOT produce any suspicious verdict from the PLACEHOLDER modules.
+    const guard = await sw.evaluate(async () => {
+      const all = await chrome.storage.session.get(null);
+      const key = Object.keys(all).find((k) => k.startsWith('visor:tab:'));
+      const v = key ? all[key] : {};
+      // Inject cookie_domain_mismatch to reproduce the exact case that fired.
+      return { ...v, cookie_domain_mismatch: true };
+    });
+    const results = await classify(sw, guard);
+    // Placeholders must always be 'safe'.
+    for (const m of ['bitb', 'clickjacking']) {
+      const r = results.find((r) => r.module === m);
+      if (r && r.verdict !== 'safe') {
+        failures.push(`placeholder module ${m} returned ${r.verdict} (score ${r.score}), expected 'safe'`);
+      }
+    }
+    // The real models may legitimately flag this vector (it has no identity match).
+    // That is correct behaviour — we only assert that placeholders don't gate.
+
     console.log('\n══ DOM / CONTENT SCRIPT ═══════════════════════════════════');    const tier2Merges = swLog.filter((t) => t.includes('Tier 2 vector merged'));
     console.log(`  Tier 2 feature merges seen by the worker: ${tier2Merges.length}`);
     if (tier2Merges.length) console.log(`  last: ${tier2Merges[tier2Merges.length - 1].slice(0, 160)}`);

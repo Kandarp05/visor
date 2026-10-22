@@ -22,6 +22,10 @@ import {
   HOMOGRAPH_FEATURE_ALLOWLIST,
 } from '../lib/model_feature_allowlist.js';
 
+/** Modules with a trained model behind them. Only these may produce a
+ *  "suspicious" verdict that can gate the page or raise an interstitial. */
+export const IMPLEMENTED_MODULES = ['aitm', 'homograph'];
+
 /**
  * Run all four classifiers against the feature vector.
  * Returns an array of four result objects (one per module), in priority order.
