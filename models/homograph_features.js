@@ -160,7 +160,7 @@
       const reg = registrable(labels), sk = skeleton(reg);
       const hit = refs.find(r => r.skel === sk && r.raw !== reg);
       if (hit) { exact = true; dist = 0; target = hit.raw; }
-      else for (const r of refs) if (r.raw !== reg) dist = Math.min(dist, levenshtein(sk, r.skel));
+      else for (const r of refs) if (r.raw !== reg) dist = Math.min(dist, weightedLevenshtein(sk, r.skel));
     }
     return {
       features: {
@@ -171,7 +171,7 @@
     };
   }
 
-  return { FEATURE_ORDER, extract, makeReferenceList, defaultRefs, punycodeDecode, decodeLabels, scriptOf, registrable, skeleton };
+  return { FEATURE_ORDER, extract, makeReferenceList, defaultRefs, punycodeDecode, decodeLabels, scriptOf, registrable, skeleton, weightedLevenshtein };
 });
 
 // Appended by sync_to_extension.sh: makes this an ES module in every
