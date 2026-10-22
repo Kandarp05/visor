@@ -161,7 +161,7 @@ export function emptyVector(tabId, url = '') {
     whole_script_confusable_violation: false,
     confusable_char_ratio: 0.0,
     skeleton_exact_match: false,
-    skeleton_edit_distance_min: 10,
+    min_weighted_skeleton_distance: 10,
     // Display-only: the brand the reference list matched. No model reads it.
     homograph_impersonates: null,
 

@@ -6,13 +6,14 @@
 })(typeof self !== 'undefined' ? self : globalThis, function (D) {
   'use strict';
   const FEATURE_ORDER = ['is_punycode', 'mixed_script_flag', 'whole_script_confusable_violation',
-    'confusable_char_ratio', 'skeleton_exact_match', 'skeleton_edit_distance_min'];
+    'confusable_char_ratio', 'skeleton_exact_match', 'min_weighted_skeleton_distance'];
   const NEUTRAL = new Set(D.NEUTRAL);
   const COMBOS = D.ALLOWED_COMBOS.map(c => new Set(c));
   const CONF = new Map(Object.entries(D.CONFUSABLES));
   const R = D.RANGES, EDIT_CAP = D.EDIT_CAP;
   const SECOND_LEVEL = new Set(['co', 'com', 'org', 'net', 'gov', 'edu', 'ac', 'or', 'ne', 'go']);
   const cache = new Map();
+  const SIMILARITY = new Map(Object.entries(D.SIMILARITY));
 
   function scriptOf(ch) {
     let s = cache.get(ch);
@@ -104,6 +105,22 @@
     return prev[B.length];
   }
 
+  function weightedLevenshtein(a, b) {
+    if (a === b) return 0;
+    const A = Array.from(a), B = Array.from(b);
+    let prev = Array.from({ length: B.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= A.length; i++) {
+      const cur = [i];
+      for (let j = 1; j <= B.length; j++) {
+        const sim = SIMILARITY.get(A[i - 1])?.[B[j - 1]] ?? 0;
+        const subCost = 1 - sim;
+        cur.push(Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + subCost));
+      }
+      prev = cur;
+    }
+    return prev[B.length];
+  }
+
   const nonNeutral = label => Array.from(label).filter(c => !NEUTRAL.has(scriptOf(c)));
   function isMixed(scripts) {
     if (scripts.size <= 1) return false;
@@ -148,7 +165,7 @@
     return {
       features: {
         is_punycode: +pun, mixed_script_flag: +mixed, whole_script_confusable_violation: +whole,
-        confusable_char_ratio: pyRound6(ratio), skeleton_exact_match: +exact, skeleton_edit_distance_min: dist
+        confusable_char_ratio: pyRound6(ratio), skeleton_exact_match: +exact, min_weighted_skeleton_distance: dist
       },
       target, unicodeHost: labels.join('.')
     };
