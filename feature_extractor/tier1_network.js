@@ -244,7 +244,7 @@ function extractHomograph(tabId, url) {
     whole_script_confusable_violation: Boolean(r.features.whole_script_confusable_violation),
     confusable_char_ratio: Number(r.features.confusable_char_ratio) || 0,
     skeleton_exact_match: Boolean(r.features.skeleton_exact_match),
-    skeleton_edit_distance_min: Number(r.features.skeleton_edit_distance_min) || 0,
+    skeleton_similarity: Number(r.features.skeleton_similarity) || 0,
     homograph_impersonates: r.target || null,
   }).catch(() => {});
 }

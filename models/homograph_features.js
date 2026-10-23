@@ -6,7 +6,7 @@
 })(typeof self !== 'undefined' ? self : globalThis, function (D) {
   'use strict';
   const FEATURE_ORDER = ['is_punycode', 'mixed_script_flag', 'whole_script_confusable_violation',
-    'confusable_char_ratio', 'skeleton_exact_match', 'min_weighted_skeleton_distance'];
+    'confusable_char_ratio', 'skeleton_exact_match', 'skeleton_similarity'];
   const NEUTRAL = new Set(D.NEUTRAL);
   const COMBOS = D.ALLOWED_COMBOS.map(c => new Set(c));
   const CONF = new Map(Object.entries(D.CONFUSABLES));
@@ -136,7 +136,18 @@
 
   function makeReferenceList(domains, exclude) {
     const ex = exclude ? normalize(exclude) : null;
-    return domains.map(normalize).filter(r => r !== ex).map(r => ({ raw: r, skel: skeleton(r) }));
+    const entries = [];
+    const bySkel = new Map();
+    for (const d of domains) {
+      const raw = normalize(d);
+      if (raw === ex) continue;
+      const sk = skeleton(raw);
+      entries.push({ raw, sk });
+      if (!bySkel.has(sk)) bySkel.set(sk, []);
+      bySkel.get(sk).push(raw);
+    }
+    entries.bySkel = bySkel;
+    return entries;
   }
   const defaultRefs = () => makeReferenceList(D.REFERENCE_DOMAINS);
 
@@ -155,17 +166,41 @@
         ratio = Math.max(ratio, hits / chars.length);
       }
     }
-    let exact = false, dist = EDIT_CAP, target = null;
+    let exact = false, similarity = 0, target = null;
     if (refs && refs.length) {
       const reg = registrable(labels), sk = skeleton(reg);
-      const hit = refs.find(r => r.skel === sk && r.raw !== reg);
-      if (hit) { exact = true; dist = 0; target = hit.raw; }
-      else for (const r of refs) if (r.raw !== reg) dist = Math.min(dist, weightedLevenshtein(sk, r.skel));
+      const matches = refs.bySkel ? refs.bySkel.get(sk) : null;
+      let hit = null;
+      if (matches) {
+        hit = matches.find(r => r !== reg);
+      } else {
+        const found = refs.find(r => r.sk === sk && r.raw !== reg);
+        hit = found ? found.raw : null;
+      }
+      if (hit) {
+        exact = true;
+        similarity = 1.0;
+        target = hit;
+      } else {
+        const skLen = sk.length;
+        let minDist = 10;
+        for (const r of refs) {
+          if (r.raw !== reg && Math.abs(r.sk.length - skLen) <= 2) {
+            const d = weightedLevenshtein(sk, r.sk);
+            if (d < minDist) {
+              minDist = d;
+            }
+          }
+        }
+        if (minDist < 3.0) {
+          similarity = Math.max(0, 1.0 - minDist / 3.0);
+        }
+      }
     }
     return {
       features: {
         is_punycode: +pun, mixed_script_flag: +mixed, whole_script_confusable_violation: +whole,
-        confusable_char_ratio: pyRound6(ratio), skeleton_exact_match: +exact, min_weighted_skeleton_distance: dist
+        confusable_char_ratio: pyRound6(ratio), skeleton_exact_match: +exact, skeleton_similarity: pyRound6(similarity)
       },
       target, unicodeHost: labels.join('.')
     };

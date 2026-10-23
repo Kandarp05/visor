@@ -553,9 +553,14 @@
 
         chrome.runtime.sendMessage(
           { type: 'TIER2_FEATURES', payload: features },
-          () => {
+          (response) => {
             if (chrome.runtime.lastError) {
               // message ignored if port closed
+            }
+            if (response?.block && response?.module === 'homograph') {
+              if (typeof window.__visorShowInterstitial === 'function') {
+                window.__visorShowInterstitial(response);
+              }
             }
           }
         );

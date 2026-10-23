@@ -1,171 +1,416 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Visor</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: system-ui, -apple-system, sans-serif;
-      width: 320px;
-      background: #0b0e16; color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      width: 330px;
+      background: #0f1115;
+      color: #e4e4e7;
+      font-size: 13px;
+      line-height: 1.4;
+      user-select: none;
     }
 
-    /* ── Header ── */
+    /* Header */
     header {
-      display: flex; align-items: center; gap: 8px;
-      background: #0f1420; padding: 12px 16px;
-      border-bottom: 1px solid #1e2a3a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: #14171d;
+      border-bottom: 1px solid #232732;
     }
-    header h1 { font-size: 0.95rem; font-weight: 700; color: #7dd3fc; }
-    header .version { font-size: 0.65rem; color: #475569; margin-left: auto; }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand-logo {
+      width: 20px;
+      height: 20px;
+      color: #3b82f6;
+    }
+    .brand-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #f4f4f5;
+      letter-spacing: -0.01em;
+    }
+    .brand-tag {
+      font-size: 0.65rem;
+      color: #71717a;
+      background: #20232b;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
 
-    /* ── Verdict banner ── */
-    #verdict-banner {
-      padding: 20px 16px;
-      display: flex; align-items: center; gap: 12px;
-      border-bottom: 1px solid #1e2a3a;
+    /* Power Toggle */
+    .toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 7px;
     }
-    #verdict-banner .dot {
-      width: 12px; height: 12px; border-radius: 50%;
+    .toggle-label {
+      font-size: 0.72rem;
+      color: #a1a1aa;
+      font-weight: 500;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 36px;
+      height: 20px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: #272a34;
+      transition: 0.2s ease;
+      border-radius: 20px;
+      border: 1px solid #363b47;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 2px;
+      bottom: 2px;
+      background-color: #a1a1aa;
+      transition: 0.2s ease;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #2563eb;
+      border-color: #3b82f6;
+    }
+    input:checked + .slider:before {
+      transform: translateX(16px);
+      background-color: #ffffff;
+    }
+
+    /* Status Card */
+    .status-card {
+      margin: 12px 16px;
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid #232732;
+      background: #14171e;
+      transition: all 0.2s ease;
+    }
+    .status-card.safe {
+      border-color: rgba(34, 197, 94, 0.25);
+      background: #0f1c16;
+    }
+    .status-card.suspicious {
+      border-color: rgba(239, 68, 68, 0.35);
+      background: #201114;
+    }
+    .status-card.paused {
+      border-color: rgba(161, 161, 170, 0.2);
+      background: #16181e;
+    }
+    .status-card.loading {
+      border-color: #232732;
+      background: #14171e;
+    }
+
+    .site-domain {
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: #9496a1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: 6px;
+    }
+    .status-heading-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
       flex-shrink: 0;
+      background: #71717a;
     }
-    #verdict-banner .label {
-      font-size: 1rem; font-weight: 700; letter-spacing: -0.01em;
-    }
-    #verdict-banner .sub {
-      font-size: 0.7rem; color: #64748b; margin-top: 2px;
-    }
-    #verdict-banner.safe       { background: #052e16; }
-    #verdict-banner.safe .dot       { background: #4ade80; }
-    #verdict-banner.safe .label     { color: #4ade80; }
-    #verdict-banner.suspicious { background: #450a0a; }
-    #verdict-banner.suspicious .dot   { background: #f87171; box-shadow: 0 0 8px #f87171; }
-    #verdict-banner.suspicious .label { color: #f87171; }
-    #verdict-banner.loading    { background: #1e293b; }
-    #verdict-banner.loading .dot    { background: #64748b; }
-    #verdict-banner.loading .label  { color: #94a3b8; }
+    .safe .status-dot { background: #22c55e; }
+    .suspicious .status-dot { background: #ef4444; }
+    .paused .status-dot { background: #eab308; }
 
-    /* ── Module list ── */
-    #modules { border-bottom: 1px solid #1e2a3a; }
+    .status-title {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: #f4f4f5;
+    }
+    .safe .status-title { color: #4ade80; }
+    .suspicious .status-title { color: #f87171; }
+    .paused .status-title { color: #eab308; }
+
+    .status-desc {
+      font-size: 0.75rem;
+      color: #8a8d98;
+      margin-top: 4px;
+      line-height: 1.35;
+    }
+
+    /* Protection Modules */
+    .section-title {
+      padding: 4px 16px 6px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #71717a;
+    }
+    .module-group {
+      margin: 0 16px 12px;
+      border: 1px solid #232732;
+      border-radius: 8px;
+      background: #14171d;
+      overflow: hidden;
+    }
     .module-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 9px 16px; border-bottom: 1px solid #141c29;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 12px;
+      border-bottom: 1px solid #1a1e27;
       font-size: 0.8rem;
     }
-    .module-row:last-child { border-bottom: none; }
-    .module-row .name { color: #94a3b8; }
-    .module-row .state { font-weight: 600; font-size: 0.75rem; }
-    .module-row .state.clear    { color: #4ade80; }
-    .module-row .state.flagged  { color: #f87171; }
-    .module-row .state.wip      { color: #475569; font-weight: 500; font-style: italic; }
+    .module-row:last-child {
+      border-bottom: none;
+    }
+    .module-name {
+      color: #d4d4d8;
+      font-weight: 450;
+    }
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .badge.clear {
+      color: #4ade80;
+      background: rgba(34, 197, 94, 0.1);
+    }
+    .badge.flagged {
+      color: #f87171;
+      background: rgba(239, 68, 68, 0.15);
+    }
+    .badge.future {
+      color: #71717a;
+      background: #1d212b;
+      font-weight: 500;
+      font-size: 0.66rem;
+    }
+    .badge.off {
+      color: #a1a1aa;
+      background: #1e2129;
+    }
 
-    /* ── Debug ── */
-    #debug-toggle {
-      display: flex; align-items: center; justify-content: space-between;
-      width: 100%; padding: 9px 16px;
-      background: none; border: none; border-bottom: 1px solid #141c29;
-      color: #475569; font-size: 0.7rem; cursor: pointer;
-      font-family: inherit; text-align: left;
+    /* Debug Accordion */
+    .debug-btn {
+      width: calc(100% - 32px);
+      margin: 0 16px 12px;
+      padding: 8px 12px;
+      background: #13161c;
+      border: 1px solid #222631;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #8b8f9c;
+      font-size: 0.74rem;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s ease;
     }
-    #debug-toggle:hover { color: #7dd3fc; }
-    #debug-toggle .caret { transition: transform 0.15s ease; }
-    #debug-toggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
+    .debug-btn:hover {
+      background: #181c24;
+      color: #e4e4e7;
+      border-color: #2e3442;
+    }
+    .debug-caret {
+      transition: transform 0.2s ease;
+      font-size: 0.8rem;
+    }
+    .debug-btn[aria-expanded="true"] .debug-caret {
+      transform: rotate(90deg);
+    }
 
-    #debug-panel { display: none; padding: 10px 16px 12px; border-bottom: 1px solid #1e2a3a; }
-    #debug-panel.open { display: block; }
-    #debug-panel h2 {
-      font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em;
-      color: #475569; margin-bottom: 6px;
+    #debug-panel {
+      display: none;
+      margin: 0 16px 12px;
+      padding: 12px;
+      background: #12141a;
+      border: 1px solid #232732;
+      border-radius: 8px;
     }
-    .feature-row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 3px 0; border-bottom: 1px solid #141c29; font-size: 0.75rem;
+    #debug-panel.open {
+      display: block;
     }
-    .feature-row:last-child { border-bottom: none; }
-    .feature-name { color: #64748b; }
-    .feature-val  { font-weight: 600; font-variant-numeric: tabular-nums; }
-    .feature-val.true    { color: #f87171; }
-    .feature-val.false   { color: #4ade80; }
-    .feature-val.number  { color: #7dd3fc; }
-    .feature-val.pending { color: #475569; font-style: italic; }
-    .feature-val.null    { color: #334155; }
+
+    .telemetry-title {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #71717a;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .telemetry-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 3px 0;
+      border-bottom: 1px solid #1a1e27;
+      font-size: 0.72rem;
+    }
+    .telemetry-row:last-child {
+      border-bottom: none;
+    }
+    .tel-key {
+      color: #8b8f9c;
+      max-width: 190px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tel-val {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #d4d4d8;
+    }
+    .tel-val.bool-true { color: #f87171; }
+    .tel-val.bool-false { color: #4ade80; }
+    .tel-val.pending { color: #636674; font-style: italic; }
+    .tel-val.accent { color: #60a5fa; }
+
     #debug-scores {
-      margin-top: 10px; padding-top: 8px; border-top: 1px solid #1e2a3a;
-      font-size: 0.7rem; color: #64748b;
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid #222631;
+      font-size: 0.7rem;
+      color: #8b8f9c;
     }
-    #debug-scores div { padding: 2px 0; }
+    #debug-scores div {
+      padding: 2px 0;
+    }
 
-    /* ── Footer ── */
+    /* Footer */
     footer {
-      padding: 8px 16px; font-size: 0.65rem; color: #334155;
-      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 10px 16px;
+      border-top: 1px solid #1c202a;
+      background: #111318;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #636674;
+      font-size: 0.68rem;
     }
-    #tab-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #tab-url {
+      max-width: 250px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     #refresh-btn {
-      background: none; border: none; color: #475569;
-      font-size: 0.8rem; cursor: pointer; padding: 0; flex-shrink: 0;
+      background: none;
+      border: none;
+      color: #71717a;
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: color 0.15s ease;
     }
-    #refresh-btn:hover { color: #7dd3fc; }
+    #refresh-btn:hover {
+      color: #e4e4e7;
+    }
   </style>
 </head>
 <body>
 
-<header>
-  <span>🛡</span>
-  <h1>Visor</h1>
-  <span class="version">v0.1.0</span>
-</header>
+  <header>
+    <div class="brand-wrap">
+      <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+      <span class="brand-name">Visor</span>
+      <span class="brand-tag">v0.1</span>
+    </div>
+    <div class="toggle-wrap">
+      <span class="toggle-label" id="power-status">Active</span>
+      <label class="switch" title="Toggle protection">
+        <input type="checkbox" id="power-toggle" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+  </header>
 
-<div id="verdict-banner" class="loading">
-  <span class="dot"></span>
-  <div>
-    <div class="label" id="verdict-text">Loading…</div>
-    <div class="sub" id="verdict-sub">checking this page</div>
+  <div class="status-card loading" id="verdict-banner">
+    <div class="site-domain" id="tab-domain">Checking current tab</div>
+    <div class="status-heading-row">
+      <span class="status-dot"></span>
+      <span class="status-title" id="verdict-text">Analyzing page</span>
+    </div>
+    <div class="status-desc" id="verdict-sub">Inspecting network headers and document state.</div>
   </div>
-</div>
 
-<div id="modules">
-  <div class="module-row">
-    <span class="name">AiTM</span>
-    <span class="state clear" id="score-aitm">Not detected</span>
-  </div>
-  <div class="module-row">
-    <span class="name">BiTB</span>
-    <span class="state wip" id="score-bitb">Work in progress</span>
-  </div>
-  <div class="module-row">
-    <span class="name">Homograph</span>
-    <span class="state wip" id="score-homograph">Work in progress</span>
-  </div>
-  <div class="module-row">
-    <span class="name">Clickjacking</span>
-    <span class="state wip" id="score-clickjacking">Work in progress</span>
-  </div>
-</div>
-
-<button id="debug-toggle" aria-expanded="false">
-  <span>Debug</span>
-  <span class="caret">›</span>
-</button>
-
-<div id="debug-panel">
-  <h2>Feature vector</h2>
-  <div id="feature-list">
-    <div class="feature-row">
-      <span class="feature-name">—</span>
-      <span class="feature-val pending">waiting…</span>
+  <div class="section-title">Detection Engines</div>
+  <div class="module-group">
+    <div class="module-row">
+      <span class="module-name">Session Relay (AiTM)</span>
+      <span class="badge clear" id="score-aitm">Not detected</span>
+    </div>
+    <div class="module-row">
+      <span class="module-name">Lookalike Domain (IDN)</span>
+      <span class="badge clear" id="score-homograph">Not detected</span>
+    </div>
+    <div class="module-row">
+      <span class="module-name">Faux Popups (BiTB)</span>
+      <span class="badge future" id="score-bitb">Work in progress</span>
+    </div>
+    <div class="module-row">
+      <span class="module-name">Click Hijacking</span>
+      <span class="badge future" id="score-clickjacking">Work in progress</span>
     </div>
   </div>
-  <div id="debug-scores"></div>
-</div>
 
-<footer>
-  <span id="tab-url" title="">—</span>
-  <button id="refresh-btn" title="Refresh">↺</button>
-</footer>
+  <button class="debug-btn" id="debug-toggle" aria-expanded="false">
+    <span>Live Telemetry and Features</span>
+    <span class="debug-caret">›</span>
+  </button>
 
-<script type="module" src="popup.js"></script>
+  <div id="debug-panel">
+    <div class="telemetry-title">Extracted Feature Vector</div>
+    <div id="feature-list"></div>
+    <div id="debug-scores"></div>
+  </div>
+
+  <footer>
+    <span id="tab-url">Ready</span>
+    <button id="refresh-btn" title="Refresh state">↻</button>
+  </footer>
+
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

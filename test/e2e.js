@@ -289,6 +289,8 @@ async function main() {
       ['xn--e1afmkfd.xn--p1ai', 'пример.рф', 'safe', null],
       ['paypa1.com', 'paypa1.com', 'safe', null],
       ['wordpress.kandarpjindal.in', 'wordpress.kandarpjindal.in', 'safe', null],
+      ['xn--blombrg-fya7i.com', 'blöombérg.com', 'suspicious', 'bloomberg.com'],
+      ['xn--unlistd-dhg.com', 'unlistеd.com', 'suspicious', null],
     ];
     for (const [puny, uni, wantVerdict, wantBrand] of HG_CASES) {
       const r = await sw.evaluate((h) => globalThis.visorAnalyzeHost(h), puny);
@@ -319,15 +321,64 @@ async function main() {
         whole_script_confusable_violation: v.whole_script_confusable_violation,
         confusable_char_ratio: v.confusable_char_ratio,
         skeleton_exact_match: v.skeleton_exact_match,
-        skeleton_edit_distance_min: v.skeleton_edit_distance_min,
+        skeleton_similarity: v.skeleton_similarity,
       };
     });
     console.log('   vector:', JSON.stringify(hgVec));
     for (const k of ['is_punycode', 'mixed_script_flag', 'whole_script_confusable_violation',
-                     'confusable_char_ratio', 'skeleton_exact_match', 'skeleton_edit_distance_min']) {
+                     'confusable_char_ratio', 'skeleton_exact_match', 'skeleton_similarity']) {
       if (!(k in hgVec) || hgVec[k] === undefined || hgVec[k] === null) {
         failures.push(`the extension vector does not carry ${k}`);
       }
+    }
+
+    // ── Homograph Navigation Blocking ────────────────────────────────────
+    console.log('\n══ HOMOGRAPH NAVIGATION BLOCKING ══════════════════════════');
+    const hgPage = await ctx.newPage();
+    try {
+      await hgPage.route('https://xn--blombrg-fya7i.com/**', (route) => {
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: '<html><body><h1>Bloomberg News Lookalike</h1><form action="/login"><input type="password" name="p"><button type="submit">Log in</button></form></body></html>',
+        });
+      });
+      console.log('Navigating to homograph site: https://xn--blombrg-fya7i.com/');
+      await hgPage.goto('https://xn--blombrg-fya7i.com/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+      await sleep(1500);
+
+      const navBlocked = await hgPage.evaluate(() => {
+        const el = document.getElementById('__visor_interstitial');
+        if (!el) return { present: false };
+        return {
+          present: true,
+          heading: el.querySelector('h1')?.textContent ?? '',
+          text: el.innerText || '',
+          hasProceed: !!el.querySelector('#__visor_proceed'),
+        };
+      });
+      console.log('   navigation block interstitial:', JSON.stringify(navBlocked));
+      if (!navBlocked.present) {
+        failures.push('the homograph module did not block the user upon navigating to a homograph site');
+      } else {
+        if (!/homograph/i.test(navBlocked.heading || '')) {
+          failures.push(`the interstitial did not name homograph (got: "${navBlocked.heading}")`);
+        }
+        if (!/bloomberg\.com/i.test(navBlocked.text || '')) {
+          failures.push('the interstitial did not show the impersonated target (bloomberg.com)');
+        }
+      }
+
+      // Test proceed anyway on homograph
+      await hgPage.evaluate(() => document.getElementById('__visor_proceed')?.click()).catch(() => {});
+      await sleep(600);
+      const afterProceed = await hgPage.evaluate(() => !document.getElementById('__visor_interstitial'));
+      console.log('   interstitial dismissed after Proceed anyway:', afterProceed);
+      if (!afterProceed) {
+        failures.push('clicking Proceed anyway did not dismiss the homograph interstitial');
+      }
+    } finally {
+      await hgPage.close().catch(() => {});
     }
 
     // ── Placeholder-module guard ──────────────────────────────────────────
